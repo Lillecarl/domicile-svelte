@@ -7,6 +7,7 @@ import {
   consumeOrExpel,
   edge,
   expel,
+  filled,
   moveColumn,
   moveWindow,
   neighbor,
@@ -168,5 +169,27 @@ describe("scrolling", () => {
 
   test("centers a span", () => {
     expect(center({ start: 820, end: 1220 }, view)).toBe(520);
+  });
+
+  const strip = [
+    { start: 0, end: 400 },
+    { start: 410, end: 810 },
+    { start: 820, end: 1220 },
+  ];
+
+  test("fills the view up to the strip's end", () => {
+    // The last column closed: the view was at 520, past the strip's new end.
+    expect(filled(520, strip.slice(0, 2), view)).toBe(0);
+    expect(filled(520, strip, view)).toBe(220);
+  });
+
+  test("leaves a scroll that shows no empty view", () => {
+    expect(filled(100, strip, view)).toBe(100);
+  });
+
+  test("starts a strip narrower than the view at its left", () => {
+    expect(filled(300, strip.slice(0, 1), view)).toBe(0);
+    expect(filled(-50, strip, view)).toBe(0);
+    expect(filled(300, [], view)).toBe(0);
   });
 });

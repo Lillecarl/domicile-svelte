@@ -39,6 +39,7 @@
     type Direction,
     edge,
     expel as expelled,
+    filled,
     moveColumn as columnMoved,
     moveWindow as windowMoved,
     neighbor,
@@ -119,12 +120,53 @@
     columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at, width));
   });
 
+  // The active column in view, and the view filled where the strip allows, so
+  // a closed or narrowed column leaves no empty space behind.
   $effect(() => {
     const span = across[columnOf(columns, active)];
-    if (span !== undefined && viewWidth > 0) {
-      const view = viewWidth;
-      scroll = untrack(() => scrollTo(scroll, span, view));
+    const strip = across;
+    const view = viewWidth;
+    if (view > 0) {
+      scroll = untrack(() => filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
     }
+  });
+
+  // The windows that held the keyboard, most recent first. A closed one goes;
+  // a parked one stays, for when it is shown again.
+  let history: string[] = [];
+  $effect(() => {
+    const now = active;
+    if (now !== undefined) {
+      history = [now, ...history.filter((key) => key !== now)];
+    }
+  });
+
+  // The active window closed: the keyboard goes to the window that held it
+  // before, as a closed tab hands it to the tab used last.
+  let present: string[] = [];
+  $effect(() => {
+    const now = [...apps.map((window) => window.appId), ...(pages.current ?? []).map(keyOf)];
+    untrack(() => {
+      const closed = present.filter((key) => !now.includes(key));
+      present = now;
+      if (closed.length === 0) {
+        return;
+      }
+      history = history.filter((key) => now.includes(key));
+      if (active === undefined || !closed.includes(active)) {
+        return;
+      }
+      const next =
+        history.find((key) => !parked.includes(key)) ??
+        columns.flatMap((column) => column.windows).find((key) => now.includes(key) && !parked.includes(key));
+      if (next === undefined) {
+        active = undefined;
+        windows.focusShell();
+      } else {
+        // A page's frame is gone with it only after the next render.
+        void tick().then(() => focus(next));
+      }
+    });
   });
 
   // Rearranges the strip around the active window; it keeps the keyboard.

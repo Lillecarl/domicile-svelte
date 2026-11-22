@@ -214,5 +214,12 @@ export const scrollTo = (scroll: number, span: Span, view: number): number => {
   return scroll;
 };
 
+/**
+ * The scroll offset nearest `scroll` that shows no empty view past either end
+ * of the strip: 0 when the strip is narrower than the view.
+ */
+export const filled = (scroll: number, across: readonly Span[], view: number): number =>
+  Math.max(0, Math.min(scroll, (across.at(-1)?.end ?? 0) - view));
+
 /** The strip's scroll offset that puts `span` in the middle of the view. */
 export const center = (span: Span, view: number): number => (span.start + span.end) / 2 - view / 2;
