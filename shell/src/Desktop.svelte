@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Bar } from "@domicile-svelte/bar";
   import Clock from "@domicile-svelte/bar-clock";
+  import Extensions from "@domicile-svelte/bar-extensions";
   import Keymap from "@domicile-svelte/bar-keymap";
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
@@ -42,7 +43,7 @@
   <Bar>
     {#snippet left()}<Keymap />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Volume /><Tray /><Clock />{/snippet}
+    {#snippet right()}<Volume /><Extensions /><Tray /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} />
 </div>

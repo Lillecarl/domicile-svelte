@@ -9,6 +9,7 @@
   "dependencies": {
     "@domicile-svelte/bar": "workspace:*",
     "@domicile-svelte/bar-clock": "workspace:*",
+    "@domicile-svelte/bar-extensions": "workspace:*",
     "@domicile-svelte/bar-keymap": "workspace:*",
     "@domicile-svelte/bar-tray": "workspace:*",
     "@domicile-svelte/bar-volume": "workspace:*",
