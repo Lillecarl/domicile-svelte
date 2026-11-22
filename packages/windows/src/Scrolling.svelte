@@ -7,8 +7,9 @@
   A parked window keeps running off the strip, as a background tab does, until
   `show` brings it back beside the active window.
 
-  Bind keys to `move`, `close`, `park` and `refocus`; `listing` and `show`
-  serve a window switcher.
+  Bind keys to `move`, `close`, `park`, `refocus` and niri's column actions
+  (`consumeOrExpel`, `maximize`, `cycleWidth` and the rest); `listing` and
+  `show` serve a window switcher.
 -->
 <script lang="ts" module>
   /** A window as a switcher lists it. */
@@ -27,13 +28,35 @@
   import { tick, untrack } from "svelte";
 
   import BrowserWindow from "./BrowserWindow.svelte";
-  import { type Columns, columnOf, type Direction, neighbor, place, scrollTo, sync } from "./columns";
+  import {
+    center as centered,
+    type Columns,
+    columnOf,
+    consume as consumed,
+    consumeOrExpel as consumedOrExpelled,
+    type Direction,
+    edge,
+    expel as expelled,
+    moveColumn as columnMoved,
+    moveWindow as windowMoved,
+    neighbor,
+    nextPreset,
+    place,
+    scrollTo,
+    spans,
+    sync,
+    toggleFull,
+  } from "./columns";
+
   const {
-    width = 0.5,
+    width = 1 / 2,
+    presets = [1 / 3, 1 / 2, 2 / 3],
     gap = 8,
   }: {
-    /** A column's width as a fraction of the view. */
+    /** A new column's width, as a proportion of the view's. */
     width?: number;
+    /** The widths `cycleWidth` steps through, narrowest first. */
+    presets?: readonly number[];
     gap?: number;
   } = $props();
 
@@ -54,8 +77,8 @@
   let viewWidth = $state(0);
   let viewHeight = $state(0);
   let scroll = $state(0);
-  const column = $derived(Math.max(0, (viewWidth - gap) * width));
-  const boxes = $derived(place(columns, { column, gap, height: viewHeight }));
+  const across = $derived(spans(columns, { view: viewWidth, gap }));
+  const boxes = $derived(place(columns, { view: viewWidth, gap, height: viewHeight }));
 
   // The window that holds the keyboard, or held it last while shell UI (a
   // popup, a launcher) has it. Native focus reports itself; a browser window
@@ -87,16 +110,23 @@
       (key) => !parked.includes(key),
     );
     const at = active;
-    columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at));
+    columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at, width));
   });
 
   $effect(() => {
-    const index = columnOf(columns, active);
-    const sizes = { column, gap, view: viewWidth };
-    if (index !== -1 && viewWidth > 0) {
-      scroll = untrack(() => scrollTo(scroll, index, sizes));
+    const span = across[columnOf(columns, active)];
+    if (span !== undefined && viewWidth > 0) {
+      const view = viewWidth;
+      scroll = untrack(() => scrollTo(scroll, span, view));
     }
   });
+
+  // Rearranges the strip around the active window; it keeps the keyboard.
+  const rearrange = (change: (columns: Columns, key: string) => Columns) => {
+    if (active !== undefined) {
+      columns = change($state.snapshot(columns) as Columns, active);
+    }
+  };
 
   // While a page has the keyboard, keys never reach the shell's document, so
   // a native window cannot get them: the page must let go first.
@@ -168,6 +198,46 @@
     }
   };
 
+  /** Focus the first or last column, in the active window's row. */
+  export const moveToEdge = (end: "first" | "last") => {
+    const next = edge(columns, active, end);
+    if (next !== undefined) {
+      focus(next);
+    }
+  };
+
+  /** niri's consume-or-expel-window-left and -right on the active window. */
+  export const consumeOrExpel = (side: "left" | "right") =>
+    rearrange((now, key) => consumedOrExpelled(now, key, side, width));
+
+  /** The next column's top window joins the active window's column. */
+  export const consume = () => rearrange(consumed);
+
+  /** The active window leaves its column for a column of its own on the right. */
+  export const expel = () => rearrange((now, key) => expelled(now, key, width));
+
+  /** Move the active window's column one place, or to an end of the strip. */
+  export const moveColumn = (to: "left" | "right" | "first" | "last") =>
+    rearrange((now, key) => columnMoved(now, key, to));
+
+  /** Move the active window up or down in its column. */
+  export const moveWindow = (direction: "up" | "down") =>
+    rearrange((now, key) => windowMoved(now, key, direction));
+
+  /** Maximize the active window's column, or give it back its width. */
+  export const maximize = () => rearrange(toggleFull);
+
+  /** Step the active window's column through `presets`. */
+  export const cycleWidth = () => rearrange((now, key) => nextPreset(now, key, presets));
+
+  /** Scroll the active window's column to the middle of the view. */
+  export const center = () => {
+    const span = across[columnOf(columns, active)];
+    if (span !== undefined) {
+      scroll = centered(span, viewWidth);
+    }
+  };
+
   /** Take the active window off the strip, and focus its neighbor. */
   export const park = () => {
     const key = active;
@@ -205,7 +275,7 @@
       title: page.title || page.url,
       app: "browser",
     }));
-    const order = columns.flat();
+    const order = columns.flatMap((column) => column.windows);
     return [...native, ...browsers]
       .map((window) => ({ ...window, parked: parked.includes(window.key) }))
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
