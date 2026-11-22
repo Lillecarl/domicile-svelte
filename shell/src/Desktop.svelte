@@ -8,15 +8,11 @@
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
-  import { useDomicile, watch } from "@domicile-svelte/svelte";
+  import { useDomicile } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
-
-  // Undefined until the compositor first says; hidden until then too.
-  const locked = watch(domicile.session, "lockchange", () => domicile.session.locked);
-
   let layout = $state<ReturnType<typeof Scrolling>>();
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
 
@@ -128,9 +124,10 @@
   });
 </script>
 
-<!-- Hidden under the lock screen as well as covered by it: windows draw
-     nothing while the desktop is locked. -->
-<div class="desktop" class:covered={locked.current !== false}>
+<!-- Not hidden under the lock screen, only covered: a hidden <app> reports no
+     area, the compositor hides its window, and the keyboard handed back on
+     unlock reaches a window not yet shown again. -->
+<div class="desktop">
   <Bar>
     {#snippet left()}<Keymap />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
@@ -154,9 +151,5 @@
     padding: 0 8px;
     box-sizing: border-box;
     background: #1e1e2e;
-  }
-
-  .covered {
-    visibility: hidden;
   }
 </style>
