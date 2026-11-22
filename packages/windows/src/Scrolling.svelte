@@ -26,7 +26,7 @@
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
-  import { SvelteSet } from "svelte/reactivity";
+  import { MediaQuery, SvelteMap } from "svelte/reactivity";
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import {
@@ -287,22 +287,68 @@
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
   };
 
-  // Windows whose tile is changing size. An <app> or a <webview> otherwise
-  // holds the page's frame at each new size until its client draws at it, so
-  // an animated size would stall every frame; `resizing` shows each size at
-  // once with the client's latest frame, as an edge drag does.
-  const resizing = new SvelteSet<string>();
-  const sized = (event: TransitionEvent) =>
-    event.target === event.currentTarget && (event.propertyName === "width" || event.propertyName === "height");
-  const resizeStarted = (event: TransitionEvent, key: string) => {
-    if (sized(event)) {
-      resizing.add(key);
+  // A window whose tile animates to a new size keeps the size it had, and is
+  // stretched to the tile, as niri stretches the old buffer: its client
+  // resizes once, at the end. The new size then holds the page's frame until
+  // the client draws at it, so the swap shows no gap.
+  //
+  // The stretch is a `scale` transition with the tile's timing: the tile's
+  // width runs w0 → w1 on the same curve as w0 · scale runs w0 → w1.
+  const reducedMotion = new MediaQuery("prefers-reduced-motion: reduce");
+  const stretched = new SvelteMap<string, { width: number; height: number }>();
+  let lastBoxes = new Map<string, { width: number; height: number }>();
+  // Ends a stretch whose transitionend never comes, as when no transition ran.
+  const fallbacks = new Map<string, ReturnType<typeof setTimeout>>();
+  // The tiles' move and resize duration, which the CSS reads as --glide.
+  const GLIDE_MS = 220;
+
+  $effect(() => {
+    const next = boxes;
+    untrack(() => {
+      for (const [key, box] of next) {
+        const before = lastBoxes.get(key);
+        const resized = before !== undefined && (before.width !== box.width || before.height !== box.height);
+        if (!resized || before.width <= 0 || before.height <= 0 || reducedMotion.current) {
+          continue;
+        }
+        // A retarget mid-animation keeps the size the window still has.
+        if (!stretched.has(key)) {
+          stretched.set(key, before);
+        }
+        clearTimeout(fallbacks.get(key));
+        fallbacks.set(
+          key,
+          setTimeout(() => stretched.delete(key), GLIDE_MS * 2),
+        );
+      }
+      for (const key of stretched.keys()) {
+        if (!next.has(key)) {
+          stretched.delete(key);
+        }
+      }
+      lastBoxes = new Map([...next].map(([key, box]) => [key, { width: box.width, height: box.height }]));
+    });
+  });
+
+  // Both of a tile's size transitions end together; the first ends the stretch.
+  const sizeSettled = (event: TransitionEvent, key: string) => {
+    if (event.target === event.currentTarget && (event.propertyName === "width" || event.propertyName === "height")) {
+      clearTimeout(fallbacks.get(key));
+      stretched.delete(key);
     }
   };
-  const resizeEnded = (event: TransitionEvent, key: string) => {
-    if (sized(event)) {
-      resizing.delete(key);
+
+  $effect(() => () => {
+    for (const timer of fallbacks.values()) {
+      clearTimeout(timer);
     }
+  });
+
+  const stretchOf = (key: string, box: { width: number; height: number } | undefined) => {
+    const size = stretched.get(key);
+    return size === undefined || box === undefined
+      ? undefined
+      : { ...size, scale: `${box.width / size.width} ${box.height / size.height}` };
   };
 
   const floatBox = (page: Page) => {
@@ -312,11 +358,18 @@
   };
 </script>
 
-<div class="view" bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
+<div
+  class="view"
+  bind:clientWidth={viewWidth}
+  bind:clientHeight={viewHeight}
+  style:--glide="{GLIDE_MS}ms"
+  style:--glide-curve="cubic-bezier(0.2, 0, 0, 1)"
+>
   <!-- Two append-only lists, so no element ever moves in the document: a
        moved <webview> reconnects, and its page shows in one view at a time. -->
   {#each apps as window (window.appId)}
     {@const box = boxes.get(window.appId)}
+    {@const stretch = stretchOf(window.appId, box)}
     <div
       class="tile"
       class:hidden={box === undefined}
@@ -324,17 +377,24 @@
       style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
-      ontransitionrun={(event) => resizeStarted(event, window.appId)}
-      ontransitionend={(event) => resizeEnded(event, window.appId)}
-      ontransitioncancel={(event) => resizeEnded(event, window.appId)}
+      ontransitionend={(event) => sizeSettled(event, window.appId)}
     >
-      <app app-id={window.appId} resizing={resizing.has(window.appId)}></app>
+      <div
+        class="surface"
+        class:stretching={stretch !== undefined}
+        style:width={stretch && `${stretch.width}px`}
+        style:height={stretch && `${stretch.height}px`}
+        style:scale={stretch?.scale}
+      >
+        <app app-id={window.appId}></app>
+      </div>
     </div>
   {/each}
   {#each pages.current ?? [] as page (page.id)}
     {@const key = keyOf(page)}
     {@const floating = floats(page)}
     {@const box = parked.includes(key) ? undefined : floating ? floatBox(page) : boxes.get(key)}
+    {@const stretch = floating ? undefined : stretchOf(key, box)}
     <div
       class="tile"
       class:floating
@@ -343,20 +403,25 @@
       style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
-      ontransitionrun={(event) => resizeStarted(event, key)}
-      ontransitionend={(event) => resizeEnded(event, key)}
-      ontransitioncancel={(event) => resizeEnded(event, key)}
+      ontransitionend={(event) => sizeSettled(event, key)}
     >
-      <BrowserWindow
-        bind:this={frames[key]}
-        window={page}
-        resizing={resizing.has(key)}
-        onfocus={() => {
-          active = key;
-          windows.focusShell();
-        }}
-        onfocusrequest={() => focus(key)}
-      />
+      <div
+        class="surface"
+        class:stretching={stretch !== undefined}
+        style:width={stretch && `${stretch.width}px`}
+        style:height={stretch && `${stretch.height}px`}
+        style:scale={stretch?.scale}
+      >
+        <BrowserWindow
+          bind:this={frames[key]}
+          window={page}
+          onfocus={() => {
+            active = key;
+            windows.focusShell();
+          }}
+          onfocusrequest={() => focus(key)}
+        />
+      </div>
     </div>
   {/each}
 </div>
@@ -378,9 +443,21 @@
     overflow: hidden;
     /* Moves and resizes glide: scrolling, a new width, consume and expel. */
     transition:
-      translate 220ms cubic-bezier(0.2, 0, 0, 1),
-      width 220ms cubic-bezier(0.2, 0, 0, 1),
-      height 220ms cubic-bezier(0.2, 0, 0, 1);
+      translate var(--glide) var(--glide-curve),
+      width var(--glide) var(--glide-curve),
+      height var(--glide) var(--glide-curve);
+  }
+
+  /* The window inside a tile. Stretched, it keeps its size and is scaled to
+     the tile on the tile's own timing. */
+  .surface {
+    width: 100%;
+    height: 100%;
+    transform-origin: 0 0;
+  }
+
+  .stretching {
+    transition: scale var(--glide) var(--glide-curve);
   }
 
   @media (prefers-reduced-motion: reduce) {

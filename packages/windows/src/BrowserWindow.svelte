@@ -18,11 +18,8 @@
     window: browserWindow,
     onfocus,
     onfocusrequest,
-    resizing = false,
   }: {
     window: BrowserWindow;
-    /** The window is changing size: show each size at once (the view's `resizing`). */
-    resizing?: boolean;
     /** The page or the address bar took focus. */
     onfocus: () => void;
     /** The page or an extension asked to be raised. */
@@ -77,10 +74,6 @@
       const window = id;
       return untrack(() => mountView(target, window));
     }
-  });
-
-  $effect(() => {
-    page?.toggleAttribute("resizing", resizing);
   });
 
   const blank = (url: string) => url === "" || url === "about:blank";
