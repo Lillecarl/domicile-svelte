@@ -5,9 +5,11 @@
   "workspaces": ["packages/*", "shell"],
   "scripts": {
     "build": "bun run --cwd shell build",
-    "check": "bun run --filter '*' check"
+    "check": "bun run --filter '*' check",
+    "test": "bun test"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.0",
     "@cprussin/option-result": "^2.0.1",
     "@domicile-desktop/sdk": "2.2.0",
     "@domicile-desktop/system-audio": "1.1.2",

@@ -5,33 +5,30 @@
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
-  import { useDomicile, watch } from "@domicile-svelte/svelte";
-  import { focusNewWindows } from "@domicile-svelte/windows";
+  import { useDomicile } from "@domicile-svelte/svelte";
+  import { focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
 
-  const windows = watch(domicile.windows, "change", () => domicile.windows.list);
-  const focused = watch(domicile.windows, "focuschange", () => domicile.windows.focused);
-  // Menus and tooltips have a parent; they are not tiled.
-  const tiled = $derived(windows.current.filter((window) => window.parent === undefined));
+  let layout = $state<ReturnType<typeof Scrolling>>();
+  const launch = (argv: string[]) => () => domicile.processes.launch(argv);
 
-  // croshome installs `domicile-quit`: SIGTERM to the launcher.
-  const bindings: Record<string, string[]> = {
-    "Meta+Return": ["kitty"],
-    "Meta+Shift+E": ["domicile-quit"],
+  const bindings: Record<string, () => void> = {
+    "Meta+Return": launch(["kitty"]),
+    // croshome installs `domicile-quit`: SIGTERM to the launcher.
+    "Meta+Shift+E": launch(["domicile-quit"]),
+    "Meta+h": () => layout?.move("left"),
+    "Meta+j": () => layout?.move("down"),
+    "Meta+k": () => layout?.move("up"),
+    "Meta+l": () => layout?.move("right"),
   };
 
   $effect(() => {
     for (const chord of Object.keys(bindings)) {
       domicile.keyboard.grab(chord);
     }
-    const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => {
-      const argv = bindings[chord];
-      if (argv !== undefined) {
-        domicile.processes.launch(argv);
-      }
-    });
+    const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => bindings[chord]?.());
     return () => {
       unlisten();
       for (const chord of Object.keys(bindings)) {
@@ -47,11 +44,7 @@
     {#snippet center()}<WindowTitle />{/snippet}
     {#snippet right()}<Volume /><Tray /><Clock />{/snippet}
   </Bar>
-  <main>
-    {#each tiled as window (window.appId)}
-      <app app-id={window.appId} class:focused={window.appId === focused.current}></app>
-    {/each}
-  </main>
+  <Scrolling bind:this={layout} />
 </div>
 
 <style>
@@ -59,23 +52,8 @@
     display: flex;
     flex-direction: column;
     height: 100vh;
+    padding: 0 8px;
+    box-sizing: border-box;
     background: #1e1e2e;
-  }
-
-  main {
-    display: flex;
-    flex: 1;
-    gap: 8px;
-    min-height: 0;
-    padding: 8px;
-  }
-
-  app {
-    flex: 1;
-    border-radius: 8px;
-  }
-
-  .focused {
-    outline: 2px solid #74c7ec;
   }
 </style>

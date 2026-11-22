@@ -1,8 +1,9 @@
 {
   "name": "@domicile-svelte/windows",
-  "description": "Window policy for a domicile shell: which window gets the keyboard.",
+  "description": "Window layout and focus for a domicile shell: niri-style scrolling columns, and which window gets the keyboard.",
   "type": "module",
-  "exports": { ".": { "default": "./src/index.ts" } },
-  "scripts": { "check": "tsc -p tsconfig.json" },
-  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0" }
+  "exports": { ".": { "svelte": "./src/index.ts", "default": "./src/index.ts" } },
+  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json", "test": "bun test" },
+  "dependencies": { "@domicile-svelte/svelte": "workspace:*" },
+  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "svelte": "^5.59.1" }
 }
