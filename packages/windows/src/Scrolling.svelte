@@ -26,6 +26,7 @@
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import {
@@ -286,6 +287,24 @@
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
   };
 
+  // Windows whose tile is changing size. An <app> or a <webview> otherwise
+  // holds the page's frame at each new size until its client draws at it, so
+  // an animated size would stall every frame; `resizing` shows each size at
+  // once with the client's latest frame, as an edge drag does.
+  const resizing = new SvelteSet<string>();
+  const sized = (event: TransitionEvent) =>
+    event.target === event.currentTarget && (event.propertyName === "width" || event.propertyName === "height");
+  const resizeStarted = (event: TransitionEvent, key: string) => {
+    if (sized(event)) {
+      resizing.add(key);
+    }
+  };
+  const resizeEnded = (event: TransitionEvent, key: string) => {
+    if (sized(event)) {
+      resizing.delete(key);
+    }
+  };
+
   const floatBox = (page: Page) => {
     const w = Math.min(page.width || 480, viewWidth);
     const h = Math.min(page.height || 640, viewHeight);
@@ -305,8 +324,11 @@
       style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
+      ontransitionrun={(event) => resizeStarted(event, window.appId)}
+      ontransitionend={(event) => resizeEnded(event, window.appId)}
+      ontransitioncancel={(event) => resizeEnded(event, window.appId)}
     >
-      <app app-id={window.appId}></app>
+      <app app-id={window.appId} resizing={resizing.has(window.appId)}></app>
     </div>
   {/each}
   {#each pages.current ?? [] as page (page.id)}
@@ -321,10 +343,14 @@
       style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
+      ontransitionrun={(event) => resizeStarted(event, key)}
+      ontransitionend={(event) => resizeEnded(event, key)}
+      ontransitioncancel={(event) => resizeEnded(event, key)}
     >
       <BrowserWindow
         bind:this={frames[key]}
         window={page}
+        resizing={resizing.has(key)}
         onfocus={() => {
           active = key;
           windows.focusShell();
@@ -350,7 +376,17 @@
     left: 0;
     border-radius: 8px;
     overflow: hidden;
-    transition: translate 180ms ease-out;
+    /* Moves and resizes glide: scrolling, a new width, consume and expel. */
+    transition:
+      translate 220ms cubic-bezier(0.2, 0, 0, 1),
+      width 220ms cubic-bezier(0.2, 0, 0, 1),
+      height 220ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tile {
+      transition: none;
+    }
   }
 
   /* Not placed yet. A page under display: none stays mounted, as a
