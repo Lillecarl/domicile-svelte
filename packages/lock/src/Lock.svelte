@@ -10,8 +10,14 @@
   import { refusalText } from "./refusal";
 
   const {
+    background,
     onunlock,
   }: {
+    /**
+     * An image URL, drawn whole in the middle on black, as swaylock's
+     * `scaling = center` does; the clock and the field go below it.
+     */
+    background?: string;
     /** The desktop unlocked: give the keyboard back to a window. */
     onunlock?: () => void;
   } = $props();
@@ -93,7 +99,10 @@
 </script>
 
 {#if locked.current !== false}
-  <div class="lock" role="dialog" aria-label="Locked">
+  <div class="lock" class:pictured={background !== undefined} role="dialog" aria-label="Locked">
+    {#if background !== undefined}
+      <div class="picture" style:background-image={`url("${background}")`}></div>
+    {/if}
     {#if locked.current === true}
       <time>{clock.current.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
       <p class="date">{clock.current.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</p>
@@ -129,10 +138,36 @@
     font-family: "Hack Nerd Font", monospace;
   }
 
+  /* The picture takes the height the clock and the field leave. */
+  .pictured {
+    padding: 4vh 0;
+    background: #000;
+  }
+
+  .picture {
+    flex: 1;
+    align-self: stretch;
+    min-height: 0;
+    margin-bottom: 2vh;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+  }
+
   time {
     font-size: 96px;
     font-weight: 300;
     line-height: 1;
+  }
+
+  /* Small and low, out of the picture's way. */
+  .pictured time {
+    font-size: 32px;
+  }
+
+  .pictured .date {
+    margin-bottom: 8px;
+    font-size: 14px;
   }
 
   .date {

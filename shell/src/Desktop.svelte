@@ -11,6 +11,11 @@
   import { useDomicile } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
+  // Inlined, so the bundle needs no asset served beside it. Traced with
+  // potrace, a layer per color, from swaylock's picture in croshome
+  // (hosts/shitbox/lockscreen.jpg), so it is sharp at any size.
+  import lockscreen from "./assets/lockscreen.svg?inline";
+
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
   let layout = $state<ReturnType<typeof Scrolling>>();
@@ -141,7 +146,7 @@
     {/key}
   {/if}
 </div>
-<Lock onunlock={() => layout?.refocus()} />
+<Lock background={lockscreen} onunlock={() => layout?.refocus()} />
 
 <style>
   .desktop {
