@@ -84,7 +84,8 @@
   // popup, a launcher) has it. Native focus reports itself; a browser window
   // is the shell's own page, so the shell tracks it here.
   let active = $state<string>();
-  const frames: Record<string, BrowserWindow> = {};
+  // bind:this sets a closed page's entry to null.
+  const frames: Record<string, BrowserWindow | null> = {};
   // Oldest first. A closed window's key stays until it is shown or parked
   // again; `listing` leaves it out.
   let parked = $state<string[]>([]);
@@ -141,11 +142,14 @@
     apps.some((window) => window.appId === key) || (pages.current ?? []).some((page) => keyOf(page) === key);
 
   const focus = (key: string) => {
-    const frame = frames[key];
-    if (frame === undefined) {
+    if (!(pages.current ?? []).some((page) => keyOf(page) === key)) {
       releasePage();
       windows.focus(key);
-    } else {
+      return;
+    }
+    // A page that closed before its frame mounted, as a popup can, has none.
+    const frame = frames[key];
+    if (frame !== undefined && frame !== null) {
       active = key;
       windows.focusShell();
       frame.focus();
