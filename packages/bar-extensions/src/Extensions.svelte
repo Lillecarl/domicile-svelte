@@ -8,6 +8,13 @@
 
   import Popup from "./Popup.svelte";
 
+  const {
+    onclose,
+  }: {
+    /** A popup closed and gave up the keyboard: hand it back. */
+    onclose?: () => void;
+  } = $props();
+
   const { extensions } = useDomicile();
   const list = watch(extensions, "change", () => (extensions.list ?? []).filter(({ enabled }) => enabled));
 
@@ -19,11 +26,16 @@
     open = { id, url, right: box === undefined ? 0 : Math.max(0, window.innerWidth - box.right) };
   };
 
-  const click = (id: string, popup: string | undefined) => {
-    const was = open?.id;
-    extensions.activate(id);
+  const close = () => {
     open = undefined;
-    if (popup !== undefined && was !== id) {
+    onclose?.();
+  };
+
+  const click = (id: string, popup: string | undefined) => {
+    extensions.activate(id);
+    if (open?.id === id) {
+      close();
+    } else if (popup !== undefined) {
       show(id, popup);
     }
   };
@@ -32,7 +44,7 @@
 </script>
 
 {#each list.current as extension (extension.id)}
-  <span class="action" data-extension-action bind:this={anchors[extension.id]}>
+  <span class="action" bind:this={anchors[extension.id]}>
     <BarItem title={extension.title || extension.name} onclick={() => click(extension.id, extension.popup)}>
       <img src={extension.icon} alt={extension.title || extension.name} />
       {#if extension.badgeText !== ""}
@@ -44,7 +56,7 @@
 
 {#if open !== undefined}
   {#key open}
-    <Popup url={open.url} right={open.right} onclose={() => (open = undefined)} />
+    <Popup url={open.url} right={open.right} trigger={anchors[open.id]} onclose={close} />
   {/key}
 {/if}
 

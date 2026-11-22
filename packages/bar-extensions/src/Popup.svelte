@@ -1,6 +1,7 @@
 <!--
   An extension's popup in a panel below the bar, right-aligned to `right`.
-  Hidden until its page has sized itself and loaded, as Chrome shows it.
+  Withheld until its page has sized itself and loaded, as Chrome shows it. It
+  takes the keyboard while open; whoever assigns focus takes it back.
 -->
 <script lang="ts">
   import {
@@ -9,115 +10,128 @@
     WEBVIEW_LOADING_CHANGE_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
   import { useDomicile } from "@domicile-svelte/svelte";
+  import { untrack } from "svelte";
 
-  const { url, right, onclose }: { url: string; right: number; onclose: () => void } = $props();
+  const {
+    url,
+    right,
+    trigger,
+    onclose,
+  }: {
+    url: string;
+    right: number;
+    /** The button that opened the panel. */
+    trigger: HTMLElement | undefined;
+    /** Called to close the panel; the caller unmounts it. */
+    onclose: () => void;
+  } = $props();
 
   const { windows } = useDomicile();
+  // `domicile set-log-level debug shell` shows these.
+  const log = (...words: unknown[]) => console.debug("[bar-extensions]", ...words);
 
   type PopupView = HTMLElement & { contentWidth: number; contentHeight: number; loading: boolean };
 
   let panel = $state<HTMLElement>();
-  let width = $state(0);
-  let height = $state(0);
-  let loading = $state(true);
-  // Until the page reports its size the view keeps its intrinsic 300x150: a
-  // 0x0 view never lays its page out, so the page never sizes itself.
-  const sized = $derived(width > 0 || height > 0);
+  let shown = $state(false);
 
-  $effect(() => {
-    if (panel === undefined) {
-      return;
-    }
+  const mountView = (panel: HTMLElement, url: string) => {
     // The engine reads `extensionpopup` once, when the view connects: Svelte
     // markup cannot promise it is set first.
     const view = document.createElement("webview") as PopupView;
     view.setAttribute("extensionpopup", "");
     view.setAttribute("src", url);
+    // Until the page reports a size the view keeps its intrinsic 300x150: a
+    // 0x0 view never lays its page out, so the page never sizes itself.
     const read = () => {
-      width = view.contentWidth;
-      height = view.contentHeight;
-      loading = view.loading;
+      const { contentWidth: width, contentHeight: height, loading } = view;
+      log("page", `${width}x${height}`, loading ? "loading" : "loaded");
+      if (width > 0 || height > 0) {
+        view.style.width = `${width}px`;
+        view.style.height = `${height}px`;
+        shown ||= !loading;
+      }
+    };
+    const close = (why: string) => {
+      log("close:", why);
+      onclose();
     };
     view.addEventListener(WEBVIEW_CONTENT_SIZE_CHANGE_EVENT, read);
     view.addEventListener(WEBVIEW_LOADING_CHANGE_EVENT, read);
-    view.addEventListener(WEBVIEW_CLOSE_EVENT, onclose);
+    view.addEventListener(WEBVIEW_CLOSE_EVENT, () => close("window.close()"));
+    log("open", url);
     panel.append(view);
     read();
 
-    const before = windows.focused;
     windows.focusShell();
     view.focus();
 
-    const outside = (event: Event) => {
-      // A press on an action button is that button's click to handle.
+    // A press on an `<app>` is a press in this page too. The trigger's own
+    // click toggles the panel.
+    const pressed = (event: Event) => {
       const target = event.target;
-      if (target instanceof Element && target.closest("[data-extension-action]") !== null) {
-        return;
+      if (target instanceof Node && !panel.contains(target) && !trigger?.contains(target)) {
+        close(`press on ${target.nodeName}`);
       }
-      if (target instanceof Node && !panel?.contains(target)) {
-        onclose();
+    };
+    // A press in another `<webview>` never reaches this page, but its focus
+    // does. Only a webview's: taking the keyboard back refocuses the page's
+    // last focused element, often an `<app>`, and that is no press.
+    const focused = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Element && target.localName === "webview" && !panel.contains(target)) {
+        close("focus in another webview");
       }
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onclose();
+        close("Escape");
       }
     };
-    document.addEventListener("pointerdown", outside, true);
-    document.addEventListener("focusin", outside);
+    document.addEventListener("pointerdown", pressed, true);
+    document.addEventListener("focusin", focused);
     document.addEventListener("keydown", escape);
-    // A press on a client window never reaches the page; its focus does.
-    // A focus change in flight from before (the last panel giving the
-    // keyboard back) arrives after this one opened: wait for the shell to hold it.
-    let held = windows.focused === undefined;
-    const unfocus = windows.on("focuschange", () => {
-      if (windows.focused === undefined) {
-        held = true;
-      } else if (held) {
-        onclose();
-      }
-    });
 
     return () => {
-      unfocus();
-      document.removeEventListener("pointerdown", outside, true);
-      document.removeEventListener("focusin", outside);
+      document.removeEventListener("pointerdown", pressed, true);
+      document.removeEventListener("focusin", focused);
       document.removeEventListener("keydown", escape);
+      log("closed");
       view.remove();
-      if (before !== undefined && windows.focused === undefined) {
-        windows.focus(before);
-      }
     };
+  };
+
+  // One view per panel and url. The view's events write state, so the rest
+  // runs untracked; tracked, each write would remake the view.
+  $effect(() => {
+    if (panel !== undefined) {
+      const target = panel;
+      return untrack(() => mountView(target, url));
+    }
   });
 </script>
 
-<div
-  class="panel"
-  bind:this={panel}
-  style:right="{right}px"
-  style:width={sized ? `${width}px` : undefined}
-  style:height={sized ? `${height}px` : undefined}
-  class:shown={sized && !loading}
-></div>
+<div class="panel" bind:this={panel} style:right="{right}px" class:withheld={!shown}></div>
 
 <style>
   .panel {
     position: fixed;
     top: calc(var(--bar-height, 32px) + 4px);
     z-index: 10;
-    visibility: hidden;
     border-radius: 8px;
     overflow: hidden;
     box-shadow: 0 4px 16px #0008;
   }
 
-  .shown {
-    visibility: visible;
+  /* Opacity, not visibility: a page under `visibility: hidden` stops drawing,
+     so it never sizes itself and never shows. */
+  .withheld {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .panel :global(webview) {
     display: block;
-    width: 100%;
-    height: 100%;
+    border: 0;
   }
 </style>

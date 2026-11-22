@@ -43,7 +43,7 @@
   <Bar>
     {#snippet left()}<Keymap />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Volume /><Extensions /><Tray /><Clock />{/snippet}
+    {#snippet right()}<Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} />
 </div>
