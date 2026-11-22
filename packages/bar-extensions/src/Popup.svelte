@@ -20,6 +20,9 @@
   let width = $state(0);
   let height = $state(0);
   let loading = $state(true);
+  // Until the page reports its size the view keeps its intrinsic 300x150: a
+  // 0x0 view never lays its page out, so the page never sizes itself.
+  const sized = $derived(width > 0 || height > 0);
 
   $effect(() => {
     if (panel === undefined) {
@@ -30,17 +33,16 @@
     const view = document.createElement("webview") as PopupView;
     view.setAttribute("extensionpopup", "");
     view.setAttribute("src", url);
-    const resize = () => {
+    const read = () => {
       width = view.contentWidth;
       height = view.contentHeight;
-    };
-    const load = () => {
       loading = view.loading;
     };
-    view.addEventListener(WEBVIEW_CONTENT_SIZE_CHANGE_EVENT, resize);
-    view.addEventListener(WEBVIEW_LOADING_CHANGE_EVENT, load);
+    view.addEventListener(WEBVIEW_CONTENT_SIZE_CHANGE_EVENT, read);
+    view.addEventListener(WEBVIEW_LOADING_CHANGE_EVENT, read);
     view.addEventListener(WEBVIEW_CLOSE_EVENT, onclose);
     panel.append(view);
+    read();
 
     const before = windows.focused;
     windows.focusShell();
@@ -65,8 +67,13 @@
     document.addEventListener("focusin", outside);
     document.addEventListener("keydown", escape);
     // A press on a client window never reaches the page; its focus does.
+    // A focus change in flight from before (the last panel giving the
+    // keyboard back) arrives after this one opened: wait for the shell to hold it.
+    let held = windows.focused === undefined;
     const unfocus = windows.on("focuschange", () => {
-      if (windows.focused !== undefined) {
+      if (windows.focused === undefined) {
+        held = true;
+      } else if (held) {
         onclose();
       }
     });
@@ -88,9 +95,9 @@
   class="panel"
   bind:this={panel}
   style:right="{right}px"
-  style:width="{width}px"
-  style:height="{height}px"
-  class:shown={width > 0 && height > 0 && !loading}
+  style:width={sized ? `${width}px` : undefined}
+  style:height={sized ? `${height}px` : undefined}
+  class:shown={sized && !loading}
 ></div>
 
 <style>
