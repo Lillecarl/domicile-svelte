@@ -21,12 +21,33 @@
 
   const percent = (volume: number) => `${Math.round(volume * 100)}%`;
 
+  // The volume the wheel asked for, until the sound server reports it. Each
+  // notch steps from here and not from the reported volume, which lags a
+  // pactl run behind: stepping from that made fast scrolling move one step
+  // per round trip. The library coalesces the requests that queue up.
+  let target = $state<number | undefined>();
+  const shown = $derived(target ?? output?.volume ?? 0);
+
+  $effect(() => {
+    if (target !== undefined && output !== undefined && Math.abs(output.volume - target) < step / 2) {
+      target = undefined;
+    }
+  });
+
+  const failed = (error: unknown) => {
+    console.error("could not set the volume", error);
+    target = undefined;
+  };
+
   const scrolled = (event: WheelEvent) => {
-    if (output !== undefined) {
-      const volume = Math.max(0, Math.min(1.5, output.volume - Math.sign(event.deltaY) * step));
+    if (output !== undefined && event.deltaY !== 0) {
+      const from = target ?? output.volume;
+      const volume = Math.round(Math.max(0, Math.min(1.5, from - Math.sign(event.deltaY) * step)) * 100) / 100;
+      target = volume;
       sound
         .setVolume(output.id, volume)
-        .catch((error: unknown) => console.error("could not set the volume", error));
+        .then((result) => result.match({ Err: failed, Ok: () => undefined }))
+        .catch(failed);
     }
   };
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
@@ -38,7 +59,7 @@
 
 {#if output !== undefined}
   <BarItem title={output.description} onclick={launch(mixer)} oncontextmenu={openGui} onwheel={scrolled}>
-    <span>{output.muted ? "🔇" : "🔊"} {percent(output.volume)}</span>
+    <span>{output.muted ? "🔇" : "🔊"} {percent(shown)}</span>
     {#if input !== undefined}
       <span title={input.description}>{input.muted ? "" : ""} {percent(input.volume)}</span>
     {/if}
