@@ -6,8 +6,9 @@
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
+  import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { useDomicile } from "@domicile-svelte/svelte";
-  import { focusNewWindows, Scrolling } from "@domicile-svelte/windows";
+  import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
@@ -15,12 +16,57 @@
   let layout = $state<ReturnType<typeof Scrolling>>();
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
 
+  const apps = installedSource(domicile);
+
+  const web: Source = {
+    search: (query) => {
+      const address = addressOf(query);
+      return address === undefined
+        ? []
+        : [
+            {
+              key: "web",
+              label: address.kind === "url" ? address.url : `Search the web for “${address.words}”`,
+              detail: "browser",
+              run: () => domicile.browser.open(address.url),
+            },
+          ];
+    },
+  };
+
+  const windowList: Source = {
+    search: (query) =>
+      matching(layout?.listing() ?? [], query, (window) => [window.title, window.app]).map((window) => ({
+        key: `window:${window.key}`,
+        label: window.title,
+        detail: window.parked ? `${window.app} · parked` : window.app,
+        run: () => layout?.show(window.key),
+      })),
+  };
+
+  let launcher = $state<{ sources: Source[]; placeholder: string }>();
+  const openLauncher = (sources: Source[], placeholder: string) => {
+    launcher = { sources, placeholder };
+  };
+  const closeLauncher = () => {
+    if (launcher !== undefined) {
+      launcher = undefined;
+      layout?.refocus();
+    }
+  };
+
   const bindings: Record<string, () => void> = {
     "Meta+Return": launch(["kitty"]),
     // croshome installs `domicile-quit`: SIGTERM to the launcher.
     "Meta+Shift+E": launch(["domicile-quit"]),
     "Meta+b": () => domicile.browser.open("about:blank"),
     "Meta+q": () => layout?.close(),
+    "Meta+d": () => {
+      apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
+      openLauncher([apps, web], "Run an app, or open an address");
+    },
+    "Meta+Tab": () => openLauncher([windowList], "Windows"),
+    "Meta+p": () => layout?.park(),
     "Meta+h": () => layout?.move("left"),
     "Meta+j": () => layout?.move("down"),
     "Meta+k": () => layout?.move("up"),
@@ -48,6 +94,12 @@
     {#snippet right()}<Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} />
+  {#if launcher !== undefined}
+    <!-- Opened again, it starts from an empty query. -->
+    {#key launcher}
+      <Launcher sources={launcher.sources} placeholder={launcher.placeholder} onclose={closeLauncher} />
+    {/key}
+  {/if}
 </div>
 
 <style>
