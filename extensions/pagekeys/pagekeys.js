@@ -41,17 +41,18 @@ const editable = (element) =>
 let wanted;
 let interacted = false;
 
-window.addEventListener(
-  "focusin",
-  (event) => {
-    const target = event.composedPath()[0];
-    if (!interacted && editable(target)) {
-      wanted = target;
-      target.blur();
-    }
-  },
-  true,
-);
+const grabBack = (target) => {
+  if (interacted || !editable(target)) {
+    return false;
+  }
+  wanted = target;
+  target.blur();
+  return true;
+};
+
+// A page without the window focus focuses a field with no focusin; the first
+// key finds it instead.
+window.addEventListener("focusin", (event) => grabBack(event.composedPath()[0]), true);
 
 window.addEventListener("pointerdown", (event) => (interacted ||= event.isTrusted), true);
 
@@ -441,7 +442,7 @@ window.addEventListener(
       return;
     }
     const target = event.composedPath()[0];
-    if (editable(target)) {
+    if (editable(target) && !grabBack(target)) {
       // Escape hands the keys back from an input, as in Vimium.
       if (event.key === "Escape") {
         target.blur();
