@@ -4,8 +4,23 @@
   alike; a browser window that asked for a size (an extension's popup window,
   a page's sized window.open) floats over the strip at that size.
 
-  Bind keys to `move`, `close` and `refocus`.
+  A parked window keeps running off the strip, as a background tab does, until
+  `show` brings it back beside the active window.
+
+  Bind keys to `move`, `close`, `park` and `refocus`; `listing` and `show`
+  serve a window switcher.
 -->
+<script lang="ts" module>
+  /** A window as a switcher lists it. */
+  export type Listed = {
+    key: string;
+    title: string;
+    /** The desktop file ID, or "browser" for a browser window. */
+    app: string;
+    parked: boolean;
+  };
+</script>
+
 <script lang="ts">
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
@@ -13,7 +28,6 @@
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import { type Columns, columnOf, type Direction, neighbor, place, scrollTo, sync } from "./columns";
-
   const {
     width = 0.5,
     gap = 8,
@@ -48,17 +62,30 @@
   // is the shell's own page, so the shell tracks it here.
   let active = $state<string>();
   const frames: Record<string, BrowserWindow> = {};
-
-  $effect(() => {
-    if (focused.current !== undefined) {
-      active = focused.current;
-    }
-  });
+  // Oldest first. A closed window's key stays until it is shown or parked
+  // again; `listing` leaves it out.
+  let parked = $state<string[]>([]);
 
   // The effects below read the state they write untracked: tracked, each
   // write would rerun the effect that made it.
   $effect(() => {
-    const open = [...apps.map((window) => window.appId), ...tiledPages.map(keyOf)];
+    const now = focused.current;
+    if (now !== undefined) {
+      active = now;
+      // A parked app that takes the keyboard (one asked to open again) comes
+      // back.
+      untrack(() => {
+        if (parked.includes(now)) {
+          parked = parked.filter((key) => key !== now);
+        }
+      });
+    }
+  });
+
+  $effect(() => {
+    const open = [...apps.map((window) => window.appId), ...tiledPages.map(keyOf)].filter(
+      (key) => !parked.includes(key),
+    );
     const at = active;
     columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at));
   });
@@ -141,6 +168,49 @@
     }
   };
 
+  /** Take the active window off the strip, and focus its neighbor. */
+  export const park = () => {
+    const key = active;
+    if (key === undefined || !exists(key)) {
+      return;
+    }
+    const next = (["left", "right", "up", "down"] as const)
+      .map((direction) => neighbor(columns, key, direction))
+      .find((found) => found !== undefined && found !== key);
+    parked = [...parked, key];
+    if (next === undefined) {
+      active = undefined;
+      releasePage();
+      windows.focusShell();
+    } else {
+      focus(next);
+    }
+  };
+
+  /** Bring `key` back, parked or not, and give it the keyboard. */
+  export const show = async (key: string) => {
+    if (parked.includes(key)) {
+      parked = parked.filter((each) => each !== key);
+      // Placed beside the active window once the columns follow.
+      await tick();
+    }
+    focus(key);
+  };
+
+  /** Every open window, the strip's first and then the parked. */
+  export const listing = (): Listed[] => {
+    const native = apps.map((window) => ({ key: window.appId, title: window.title, app: window.desktopId }));
+    const browsers = (pages.current ?? []).map((page) => ({
+      key: keyOf(page),
+      title: page.title || page.url,
+      app: "browser",
+    }));
+    const order = columns.flat();
+    return [...native, ...browsers]
+      .map((window) => ({ ...window, parked: parked.includes(window.key) }))
+      .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
+  };
+
   const floatBox = (page: Page) => {
     const w = Math.min(page.width || 480, viewWidth);
     const h = Math.min(page.height || 640, viewHeight);
@@ -167,7 +237,7 @@
   {#each pages.current ?? [] as page (page.id)}
     {@const key = keyOf(page)}
     {@const floating = floats(page)}
-    {@const box = floating ? floatBox(page) : boxes.get(key)}
+    {@const box = parked.includes(key) ? undefined : floating ? floatBox(page) : boxes.get(key)}
     <div
       class="tile"
       class:floating
