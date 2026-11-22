@@ -7,6 +7,7 @@
   import {
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
+    WEBVIEW_GUEST_KEYDOWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
   import { untrack } from "svelte";
@@ -23,7 +24,7 @@
     onfocusrequest: () => void;
   } = $props();
 
-  type Page = HTMLElement & { url: string; src: string };
+  type Page = HTMLWebViewElement;
 
   let frame = $state<HTMLElement>();
   let address = $state<HTMLInputElement>();
@@ -48,6 +49,14 @@
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
     view.addEventListener(WEBVIEW_GUEST_FOCUS_EVENT, () => onfocus());
     view.addEventListener(WEBVIEW_FOCUS_REQUEST_EVENT, () => onfocusrequest());
+    // The page saw the chord first and let it through.
+    view.addEventListener(WEBVIEW_GUEST_KEYDOWN_EVENT, (event) => {
+      const binding = bindings[chordOf(event)];
+      if (binding !== undefined) {
+        event.preventDefault();
+        binding();
+      }
+    });
     frame.append(view);
     page = view;
     changed();
@@ -76,6 +85,34 @@
     }
   };
 
+  const editAddress = () => {
+    if (chrome) {
+      address?.focus();
+      address?.select();
+    }
+  };
+
+  // The guest has none of Chrome's own keys.
+  const bindings: Record<string, () => void> = {
+    "Ctrl+l": editAddress,
+    "Ctrl+r": () => page?.reload(),
+    "Alt+ArrowLeft": () => page?.goBack(),
+    "Alt+ArrowRight": () => page?.goForward(),
+  };
+
+  const chordOf = (event: KeyboardEvent) =>
+    [event.ctrlKey && "Ctrl", event.altKey && "Alt", event.shiftKey && "Shift", event.key].filter(Boolean).join("+");
+
+  const addressKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      typed = page?.url ?? "";
+      page?.focus();
+    } else if (chordOf(event) === "Ctrl+l") {
+      event.preventDefault();
+      address?.select();
+    }
+  };
+
   const go = (text: string) => {
     const trimmed = text.trim();
     if (page === undefined || trimmed === "") {
@@ -99,7 +136,13 @@
         go(typed);
       }}
     >
-      <input bind:this={address} bind:value={typed} spellcheck="false" placeholder="Search or type a URL" />
+      <input
+        bind:this={address}
+        bind:value={typed}
+        onkeydown={addressKey}
+        spellcheck="false"
+        placeholder="Search or type a URL"
+      />
     </form>
   {/if}
   <div class="page" bind:this={frame}></div>
