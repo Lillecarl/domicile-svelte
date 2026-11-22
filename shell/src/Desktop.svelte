@@ -73,15 +73,44 @@
       openLauncher([windowList], "Windows");
     },
     "Meta+p": () => layout?.park(),
+    // The layout keys as croshome's niri config binds them.
     "Meta+h": () => layout?.move("left"),
     "Meta+j": () => layout?.move("down"),
     "Meta+k": () => layout?.move("up"),
     "Meta+l": () => layout?.move("right"),
+    "Meta+Left": () => layout?.move("left"),
+    "Meta+Down": () => layout?.move("down"),
+    "Meta+Up": () => layout?.move("up"),
+    "Meta+Right": () => layout?.move("right"),
+    "Meta+Home": () => layout?.moveToEdge("first"),
+    "Meta+End": () => layout?.moveToEdge("last"),
+    "Meta+Ctrl+h": () => layout?.moveColumn("left"),
+    "Meta+Ctrl+l": () => layout?.moveColumn("right"),
+    "Meta+Ctrl+j": () => layout?.moveWindow("down"),
+    "Meta+Ctrl+k": () => layout?.moveWindow("up"),
+    "Meta+Ctrl+Left": () => layout?.moveColumn("left"),
+    "Meta+Ctrl+Right": () => layout?.moveColumn("right"),
+    "Meta+Ctrl+Down": () => layout?.moveWindow("down"),
+    "Meta+Ctrl+Up": () => layout?.moveWindow("up"),
+    "Meta+Ctrl+Home": () => layout?.moveColumn("first"),
+    "Meta+Ctrl+End": () => layout?.moveColumn("last"),
+    "Meta+comma": () => layout?.consume(),
+    "Meta+period": () => layout?.expel(),
+    "Meta+bracketleft": () => layout?.consumeOrExpel("left"),
+    "Meta+bracketright": () => layout?.consumeOrExpel("right"),
+    "Meta+r": () => layout?.cycleWidth(),
+    "Meta+f": () => layout?.maximize(),
+    "Meta+c": () => layout?.center(),
   };
 
   $effect(() => {
     for (const chord of Object.keys(bindings)) {
-      domicile.keyboard.grab(chord);
+      // A chord the keyboard cannot type throws; the others still bind.
+      try {
+        domicile.keyboard.grab(chord);
+      } catch (error) {
+        console.error("[shell] grabbing", chord, error);
+      }
     }
     const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => bindings[chord]?.());
     return () => {
