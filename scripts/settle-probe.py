@@ -44,9 +44,7 @@ class Frame:
 
 
 def shell(*words: str) -> None:
-    # The 2.2.0 SDK cannot answer a command, so send-shell reports a timeout
-    # after the shell ran it; its exit status says nothing.
-    subprocess.run(["domicile", "send-shell", *words], capture_output=True, check=False)
+    subprocess.run(["domicile", "send-shell", *words], check=True)
 
 
 def screenshot(path: Path) -> None:
@@ -126,11 +124,7 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     shell("settle-ms", str(args.settle))
     try:
-        subprocess.Popen(
-            ["domicile", "send-shell", *args.command],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        shell(*args.command)
         frames = changes(
             record(
                 args.out, args.length, shell_screenshot if args.shell else screenshot
