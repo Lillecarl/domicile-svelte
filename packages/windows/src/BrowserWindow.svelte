@@ -1,6 +1,6 @@
 <!--
   A browser window: an address bar over the page. An extension's popup window
-  shows an extension page and gets no address bar, as in Chrome.
+  and a site's app window get no address bar, as in Chrome.
 -->
 <script lang="ts">
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
@@ -32,8 +32,9 @@
   let address = $state<HTMLInputElement>();
   let page = $state<Page>();
   let typed = $state("");
-  // The SDK hands the engine's null as undefined.
-  const chrome = $derived(browserWindow.popupWindow === undefined);
+  // The SDK hands the engine's null as undefined. A site opened as an app
+  // (`domicile open --app`) is drawn as an application, without one too.
+  const chrome = $derived(browserWindow.popupWindow === undefined && !browserWindow.isApp);
 
   // The list hands a new object on every change; the view follows the id.
   const id = $derived(browserWindow.id);

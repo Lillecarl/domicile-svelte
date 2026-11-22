@@ -16,7 +16,7 @@
   export type Listed = {
     key: string;
     title: string;
-    /** The desktop file ID, or "browser" for a browser window. */
+    /** The desktop file ID; an app window's app id; "browser" for another browser window. */
     app: string;
     parked: boolean;
   };
@@ -277,7 +277,8 @@
     const browsers = (pages.current ?? []).map((page) => ({
       key: keyOf(page),
       title: page.title || page.url,
-      app: "browser",
+      // An app window's id is its desktop entry's, as croshome writes them.
+      app: page.isApp && page.appId !== "" ? page.appId : "browser",
     }));
     const order = columns.flatMap((column) => column.windows);
     return [...native, ...browsers]
