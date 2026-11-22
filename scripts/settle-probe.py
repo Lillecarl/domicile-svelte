@@ -17,14 +17,19 @@ across that span, labelled with their milliseconds. Needs DOMICILE_SOCK.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 SMALL = (320, 180)
 SHEET_WIDTH = 640
@@ -44,14 +49,31 @@ def shell(*words: str) -> None:
     subprocess.run(["domicile", "send-shell", *words], capture_output=True, check=False)
 
 
-def record(out: Path, length_ms: int) -> list[tuple[int, Path]]:
+def screenshot(path: Path) -> None:
+    subprocess.run(
+        ["domicile", "screenshot", str(path)], capture_output=True, check=True
+    )
+
+
+def shell_screenshot(path: Path) -> None:
+    # The shell's own page as it drew it, before the compositor places the
+    # native windows over it.
+    shot = subprocess.run(
+        ["domicile", "devtools", "shell", "Page.captureScreenshot", '{"format":"png"}'],
+        capture_output=True,
+        check=True,
+    )
+    path.write_bytes(base64.b64decode(json.loads(shot.stdout)["data"]))
+
+
+def record(
+    out: Path, length_ms: int, take: Callable[[Path], None]
+) -> list[tuple[int, Path]]:
     shots: list[tuple[int, Path]] = []
     start = time.monotonic()
     while (elapsed := round((time.monotonic() - start) * 1000)) < length_ms:
         path = out / f"{elapsed:05d}.png"
-        subprocess.run(
-            ["domicile", "screenshot", str(path)], capture_output=True, check=True
-        )
+        take(path)
         shots.append((elapsed, path))
     return shots
 
@@ -93,6 +115,11 @@ def main() -> None:
     parser.add_argument("--settle", type=int, default=3000)
     parser.add_argument("--for", dest="length", type=int, default=4500)
     parser.add_argument("--frames", type=int, default=12)
+    parser.add_argument(
+        "--shell",
+        action="store_true",
+        help="record the shell's page through devtools, not the screen",
+    )
     parser.add_argument("command", nargs="+")
     args = parser.parse_args()
 
@@ -104,7 +131,11 @@ def main() -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        frames = changes(record(args.out, args.length))
+        frames = changes(
+            record(
+                args.out, args.length, shell_screenshot if args.shell else screenshot
+            )
+        )
     finally:
         shell("settle-ms", "220")
 
