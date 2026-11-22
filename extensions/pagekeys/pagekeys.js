@@ -2,11 +2,13 @@
 // opens it in a new window, i focuses the field the page wanted focused,
 // Escape leaves an input or the hints.
 //
-// The clickable rules and the hint strings follow Vimium's
-// content_scripts/link_hints.js (MIT). It runs in every frame; the frame
+// The clickable rules follow Vimium's content_scripts/link_hints.js (MIT),
+// the hint strings Vimium C's content/hint_filters.ts (Apache-2.0, Gong
+// Dahan). It runs in every frame; the frame
 // that has the keyboard answers.
 
-const HINT_CHARS = "sadfjklewcmpgh";
+// Vimium C's letters, in its order: the first hints are home row.
+const HINT_CHARS = "sadjklewcmpgh";
 const STEP = 60;
 
 const NOT_TEXT = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
@@ -137,21 +139,44 @@ const scrollToEnd = (direction) => {
 
 // --- Hints ---------------------------------------------------------------------
 
-// Vimium's hintStrings: the leaves of a tree over HINT_CHARS, so no hint is
-// the prefix of another, sorted so that the first letters spread out.
+// Vimium C's initAlphabetEngine. The hints are the leaves of a tree over
+// HINT_CHARS, so no hint is the prefix of another, and as many as possible are
+// one letter. Each hint packs its letters' positions in HINT_CHARS into a
+// number, first letter lowest; sorting those numbers keeps HINT_CHARS' order
+// (home row first) instead of the alphabet's.
 const hintStrings = (count) => {
-  const hints = [""];
-  let offset = 0;
-  while (hints.length - offset < count || hints.length === 1) {
-    const hint = hints[offset++];
-    for (const char of HINT_CHARS) {
-      hints.push(char + hint);
+  const step = HINT_CHARS.length;
+  const bits = Math.ceil(Math.log2(step + 1));
+  const mask = (1 << bits) - 1;
+  const expand = Math.ceil((count - 1) / (step - 1)) || 1;
+  const codes = [0];
+  let next = 1;
+  let shift = 0;
+  for (let offset = 0; offset < expand; ) {
+    if (next === offset) {
+      next = next * step + 1;
+      shift += bits;
+    }
+    const code = codes[offset++];
+    for (let char = 1; char <= step; char++) {
+      codes.push((char << shift) | code);
     }
   }
-  return hints
-    .slice(offset, offset + count)
-    .sort()
-    .map((hint) => [...hint].reverse().join(""));
+  // A shorter hint sorts among the longer ones that end in its letter.
+  while (next-- > expand) {
+    codes[next] <<= bits;
+  }
+  return codes
+    .slice(expand, expand + count)
+    .sort((a, b) => a - b)
+    .map((code) => {
+      let rest = code & mask ? code : code >> bits;
+      let hint = "";
+      for (; rest !== 0; rest >>>= bits) {
+        hint += HINT_CHARS[(rest & mask) - 1];
+      }
+      return hint;
+    });
 };
 
 const visibleRect = (element) => {
