@@ -9,12 +9,10 @@
   // Menus and tooltips have a parent; they are not tiled.
   const tiled = $derived(windows.current.filter((window) => window.parent === undefined));
 
-  // SIGTERM ends domicile cleanly. Its control socket is
-  // domicile-ipc.<launcher pid>.sock, and every app it starts has it.
-  const quit = ["sh", "-c", 'p=${DOMICILE_SOCK##*/domicile-ipc.}; kill -TERM "${p%.sock}"'];
+  // croshome installs `domicile-quit`: SIGTERM to the launcher.
   const bindings: Record<string, string[]> = {
     "Meta+Return": ["kitty"],
-    "Meta+Shift+E": quit,
+    "Meta+Shift+E": ["domicile-quit"],
   };
 
   $effect(() => {
