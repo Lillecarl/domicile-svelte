@@ -2,9 +2,6 @@ import { mountShell } from "@domicile-svelte/svelte";
 
 import Desktop from "./Desktop.svelte";
 
-// `domicile load-shell` runs this again with the windows still open.
-export const Shell = mountShell(Desktop, (domicile) => {
-  if (domicile.windows.list.length === 0) {
-    domicile.processes.launch(["kitty"]);
-  }
-});
+// The first kitty comes from domicile.json's startup.commands: this module
+// runs again on every load-shell.
+export const Shell = mountShell(Desktop);
