@@ -1,6 +1,11 @@
 <script lang="ts">
-  import { useDomicile } from "./desktop";
-  import { watch } from "./watch.svelte";
+  import { Bar } from "@domicile-svelte/bar";
+  import Clock from "@domicile-svelte/bar-clock";
+  import Keymap from "@domicile-svelte/bar-keymap";
+  import Tray from "@domicile-svelte/bar-tray";
+  import Volume from "@domicile-svelte/bar-volume";
+  import WindowTitle from "@domicile-svelte/bar-window-title";
+  import { useDomicile, watch } from "@domicile-svelte/svelte";
 
   const domicile = useDomicile();
 
@@ -34,20 +39,33 @@
   });
 </script>
 
-<main>
-  {#each tiled as window (window.appId)}
-    <app app-id={window.appId} class:focused={window.appId === focused.current}></app>
-  {/each}
-</main>
+<div class="desktop">
+  <Bar>
+    {#snippet left()}<Keymap />{/snippet}
+    {#snippet center()}<WindowTitle />{/snippet}
+    {#snippet right()}<Volume /><Tray /><Clock />{/snippet}
+  </Bar>
+  <main>
+    {#each tiled as window (window.appId)}
+      <app app-id={window.appId} class:focused={window.appId === focused.current}></app>
+    {/each}
+  </main>
+</div>
 
 <style>
+  .desktop {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #1e1e2e;
+  }
+
   main {
     display: flex;
+    flex: 1;
     gap: 8px;
-    height: 100vh;
+    min-height: 0;
     padding: 8px;
-    box-sizing: border-box;
-    background: #1e1e2e;
   }
 
   app {

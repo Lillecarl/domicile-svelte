@@ -1,0 +1,9 @@
+{
+  "name": "@domicile-svelte/bar-keymap",
+  "description": "The keymap the desktop types on. A click switches to the next one the config lists.",
+  "type": "module",
+  "exports": { ".": { "svelte": "./src/Keymap.svelte", "default": "./src/Keymap.svelte" } },
+  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json" },
+  "dependencies": { "@domicile-svelte/bar": "workspace:*", "@domicile-svelte/svelte": "workspace:*" },
+  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "svelte": "^5.59.1" }
+}
