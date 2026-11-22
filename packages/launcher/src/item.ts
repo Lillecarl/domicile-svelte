@@ -4,6 +4,8 @@ export type Item = {
   key: string;
   label: string;
   detail?: string;
+  /** An image URL; the row keeps the space empty without one. */
+  icon?: string | undefined;
   run: () => void | Promise<void>;
 };
 

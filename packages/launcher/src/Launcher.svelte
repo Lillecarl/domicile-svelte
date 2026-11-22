@@ -98,6 +98,9 @@
           onpointermove={() => (selected = index)}
           onclick={() => run(item)}
         >
+          <span class="icon">
+            {#if item.icon !== undefined}<img src={item.icon} alt="" />{/if}
+          </span>
           <span class="label">{item.label}</span>
           {#if item.detail}<span class="detail">{item.detail}</span>{/if}
         </button>
@@ -148,8 +151,8 @@
 
   button {
     display: flex;
-    gap: 12px;
-    align-items: baseline;
+    gap: 10px;
+    align-items: center;
     width: 100%;
     padding: 6px 10px;
     border: 0;
@@ -163,6 +166,19 @@
 
   .chosen {
     background: #313244;
+  }
+
+  .icon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+  }
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
 
   .label {

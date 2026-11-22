@@ -28,6 +28,7 @@
               key: "web",
               label: address.kind === "url" ? address.url : `Search the web for “${address.words}”`,
               detail: "browser",
+              icon: apps.icon("web-browser"),
               run: () => domicile.browser.open(address.url),
             },
           ];
@@ -40,6 +41,7 @@
         key: `window:${window.key}`,
         label: window.title,
         detail: window.parked ? `${window.app} · parked` : window.app,
+        icon: window.app === "browser" ? apps.icon("web-browser") : apps.appIcon(window.app),
         run: () => layout?.show(window.key),
       })),
   };
@@ -65,7 +67,11 @@
       apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
       openLauncher([apps, web], "Run an app, or open an address");
     },
-    "Meta+Tab": () => openLauncher([windowList], "Windows"),
+    "Meta+Tab": () => {
+      // Window rows take their app's icon from the entries.
+      apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
+      openLauncher([windowList], "Windows");
+    },
     "Meta+p": () => layout?.park(),
     "Meta+h": () => layout?.move("left"),
     "Meta+j": () => layout?.move("down"),
