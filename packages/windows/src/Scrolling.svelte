@@ -24,6 +24,7 @@
 
 <script lang="ts">
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
+  import { PreviewedWindow } from "@domicile-desktop/sdk/previewed-window";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
   import { MediaQuery, SvelteMap } from "svelte/reactivity";
@@ -61,7 +62,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, windows } = useDomicile();
+  const { browser, capture, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const pages = watch(browser, "change", () => browser.windows);
@@ -287,48 +288,151 @@
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
   };
 
-  // A window whose tile animates to a new size takes the new size at once, so
-  // its client starts drawing at it, and is scaled from the tile's current
-  // size down or up to 1 as the tile grows or shrinks to it, as niri scales
-  // a window. Resized at the end instead, the client drew its old frame in
-  // part of the new box until it caught up.
+  // A window whose tile animates to a new size is frozen, as niri does it:
   //
-  // The scale runs on the tile's duration and curve, so the window's drawn
-  // size, final · scale, follows the tile's animated width and height.
+  // 1. It keeps its old size, stretched with the tile, while the shell takes a
+  //    still of it (capture.preview).
+  // 2. The still covers it, stretched to the tile, and the window takes its
+  //    final size under it, unseen, so its client draws at that size while the
+  //    tile moves.
+  // 3. Once the tile has stopped and the client has committed the new size
+  //    (a browser window: two frames, as its view holds the page's frame until
+  //    it draws), the still goes and the window shows.
+  //
+  // Resizing the client at the end showed its old frame in part of the new
+  // box; resizing it at the start showed it unready. With no still, it is
+  // resized at the end; with no commit, the still goes after READY_MS.
   const reducedMotion = new MediaQuery("prefers-reduced-motion: reduce");
   // The tiles' move and resize timing, which the CSS reads as --glide.
   const GLIDE_MS = 220;
   const GLIDE_CURVE = "cubic-bezier(0.2, 0, 0, 1)";
-  // A surface's size while it scales: the final size, fixed, since the tile's
-  // size is animating and the client must see only the final one.
-  const settling = new SvelteMap<string, { width: number; height: number }>();
-  const surfaces: Record<string, HTMLElement | null> = {};
-  let lastBoxes = new Map<string, { width: number; height: number }>();
+  const READY_MS = 1000;
 
-  const scaleIn = (key: string, size: { width: number; height: number }) => {
+  type Size = { width: number; height: number };
+  type Freeze = {
+    /** The size the window keeps until it has a still. */
+    old: Size;
+    target: Size;
+    /** The still, once taken: the window then has `target` under it. */
+    still: string | undefined;
+    /** The tile is animating. */
+    moving: boolean;
+    /** A native window's committed size when the freeze began. */
+    committed: Size | undefined;
+    /** A browser window drew at `target`. */
+    pageDrawn: boolean;
+  };
+
+  const freezes = new SvelteMap<string, Freeze>();
+  const surfaces: Record<string, HTMLElement | null> = {};
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  let lastBoxes = new Map<string, Size>();
+
+  // Ends a freeze: the window shows at its tile's size, unscaled.
+  const thaw = (key: string) => {
+    clearTimeout(timers.get(key));
+    for (const running of surfaces[key]?.getAnimations() ?? []) {
+      running.cancel();
+    }
+    freezes.delete(key);
+  };
+
+  const update = (key: string, change: Partial<Freeze>) => {
+    const freeze = freezes.get(key);
+    if (freeze !== undefined) {
+      freezes.set(key, { ...freeze, ...change });
+    }
+  };
+
+  const committedOf = (key: string): Size | undefined => {
+    const window = list.current.find((each) => each.appId === key);
+    return window?.width === undefined || window.height === undefined
+      ? undefined
+      : { width: window.width, height: window.height };
+  };
+
+  const pageIdOf = (key: string) => (pages.current ?? []).find((page) => keyOf(page) === key)?.id;
+
+  // Scale the old-size window from where the tile is now to `to`.
+  const stretchOld = (key: string, old: Size, to: Size) => {
     const surface = surfaces[key];
     const tile = surface?.parentElement;
-    if (surface === undefined || surface === null || tile === null || tile === undefined) {
+    if (surface === undefined || surface === null || tile === undefined || tile === null) {
       return;
     }
-    // Where the tile is now: its old size, or mid-way when this retargets.
     const now = tile.getBoundingClientRect();
     for (const running of surface.getAnimations()) {
       running.cancel();
     }
-    settling.set(key, size);
-    const animation = surface.animate(
-      [{ scale: `${now.width / size.width} ${now.height / size.height}` }, { scale: "1 1" }],
-      { duration: GLIDE_MS, easing: GLIDE_CURVE },
+    surface.animate(
+      [{ scale: `${now.width / old.width} ${now.height / old.height}` }, { scale: `${to.width / old.width} ${to.height / old.height}` }],
+      { duration: GLIDE_MS, easing: GLIDE_CURVE, fill: "forwards" },
     );
-    animation.finished.then(
-      () => {
-        if (settling.get(key) === size) {
-          settling.delete(key);
-        }
-      },
-      // Cancelled by a retarget, which settles it itself.
-      () => undefined,
+  };
+
+  const drawnTwice = (key: string) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => update(key, { pageDrawn: true })));
+
+  const takeStill = (key: string) => {
+    const page = pageIdOf(key);
+    capture
+      .preview(page === undefined ? PreviewedWindow.App(key) : PreviewedWindow.Browser(page))
+      .then((taken) =>
+        taken.match({
+          Ok: (still) => {
+            if (freezes.has(key)) {
+              for (const running of surfaces[key]?.getAnimations() ?? []) {
+                running.cancel();
+              }
+              update(key, { still });
+              if (page !== undefined) {
+                drawnTwice(key);
+              }
+            }
+          },
+          Err: (error) => console.error("[windows] no still of", key, error),
+        }),
+      )
+      .catch((error: unknown) => console.error("[windows] no still of", key, error));
+  };
+
+  const stopped = (key: string) => {
+    clearTimeout(timers.get(key));
+    update(key, { moving: false });
+    timers.set(
+      key,
+      setTimeout(() => thaw(key), READY_MS),
+    );
+  };
+
+  const freeze = (key: string, before: Size, box: Size) => {
+    const target = { width: box.width, height: box.height };
+    const current = freezes.get(key);
+    if (current === undefined) {
+      freezes.set(key, {
+        old: before,
+        target,
+        still: undefined,
+        moving: true,
+        committed: committedOf(key),
+        pageDrawn: false,
+      });
+      takeStill(key);
+    } else {
+      update(key, { target, moving: true, pageDrawn: false });
+      if (current.still !== undefined && pageIdOf(key) !== undefined) {
+        drawnTwice(key);
+      }
+    }
+    const old = freezes.get(key)?.old ?? before;
+    if (freezes.get(key)?.still === undefined) {
+      stretchOld(key, old, target);
+    }
+    // Ends the move if the tile's transitionend never comes.
+    clearTimeout(timers.get(key));
+    timers.set(
+      key,
+      setTimeout(() => stopped(key), GLIDE_MS * 2),
     );
   };
 
@@ -339,16 +443,53 @@
         const before = lastBoxes.get(key);
         const resized = before !== undefined && (before.width !== box.width || before.height !== box.height);
         if (resized && before.width > 0 && before.height > 0 && !reducedMotion.current) {
-          scaleIn(key, { width: box.width, height: box.height });
+          freeze(key, before, box);
         }
       }
-      for (const key of settling.keys()) {
+      for (const key of [...freezes.keys()]) {
         if (!next.has(key)) {
-          settling.delete(key);
+          thaw(key);
         }
       }
       lastBoxes = new Map([...next].map(([key, box]) => [key, { width: box.width, height: box.height }]));
     });
+  });
+
+  // The swap: the tile stopped, and the window is ready at its new size.
+  $effect(() => {
+    for (const [key, each] of freezes) {
+      if (each.moving) {
+        continue;
+      }
+      const committed = committedOf(key);
+      const near = (a: Size, b: Size) => Math.abs(a.width - b.width) <= 1 && Math.abs(a.height - b.height) <= 1;
+      const ready =
+        each.still === undefined ||
+        (pageIdOf(key) === undefined
+          ? committed !== undefined &&
+            (near(committed, each.target) || (each.committed !== undefined && !near(committed, each.committed)))
+          : each.pageDrawn);
+      if (ready) {
+        untrack(() => thaw(key));
+      }
+    }
+  });
+
+  // Both of a tile's size transitions end together; the first ends the move.
+  const sizeSettled = (event: TransitionEvent, key: string) => {
+    if (
+      freezes.has(key) &&
+      event.target === event.currentTarget &&
+      (event.propertyName === "width" || event.propertyName === "height")
+    ) {
+      stopped(key);
+    }
+  };
+
+  $effect(() => () => {
+    for (const timer of timers.values()) {
+      clearTimeout(timer);
+    }
   });
 
   const floatBox = (page: Page) => {
@@ -369,7 +510,8 @@
        moved <webview> reconnects, and its page shows in one view at a time. -->
   {#each apps as window (window.appId)}
     {@const box = boxes.get(window.appId)}
-    {@const settled = settling.get(window.appId)}
+    {@const frozen = freezes.get(window.appId)}
+    {@const size = frozen && (frozen.still === undefined ? frozen.old : frozen.target)}
     <div
       class="tile"
       class:hidden={box === undefined}
@@ -377,22 +519,26 @@
       style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
+      ontransitionend={(event) => sizeSettled(event, window.appId)}
     >
       <div
         class="surface"
+        class:under={frozen?.still !== undefined}
         bind:this={surfaces[window.appId]}
-        style:width={settled && `${settled.width}px`}
-        style:height={settled && `${settled.height}px`}
+        style:width={size && `${size.width}px`}
+        style:height={size && `${size.height}px`}
       >
         <app app-id={window.appId}></app>
       </div>
+      {#if frozen?.still !== undefined}<img class="still" src={frozen.still} alt="" />{/if}
     </div>
   {/each}
   {#each pages.current ?? [] as page (page.id)}
     {@const key = keyOf(page)}
     {@const floating = floats(page)}
     {@const box = parked.includes(key) ? undefined : floating ? floatBox(page) : boxes.get(key)}
-    {@const settled = floating ? undefined : settling.get(key)}
+    {@const frozen = floating ? undefined : freezes.get(key)}
+    {@const size = frozen && (frozen.still === undefined ? frozen.old : frozen.target)}
     <div
       class="tile"
       class:floating
@@ -401,12 +547,15 @@
       style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
+      ontransitionend={(event) => sizeSettled(event, key)}
     >
+      {#if frozen?.still !== undefined}<img class="still" src={frozen.still} alt="" />{/if}
       <div
         class="surface"
+        class:under={frozen?.still !== undefined}
         bind:this={surfaces[key]}
-        style:width={settled && `${settled.width}px`}
-        style:height={settled && `${settled.height}px`}
+        style:width={size && `${size.width}px`}
+        style:height={size && `${size.height}px`}
       >
         <BrowserWindow
           bind:this={frames[key]}
@@ -444,12 +593,28 @@
       height var(--glide) var(--glide-curve);
   }
 
-  /* The window inside a tile. While the tile resizes it has the final size,
-     fixed, and scaleIn scales it to the tile. */
+  /* The window inside a tile. While the tile resizes, it is frozen: see
+     `freeze`. */
   .surface {
     width: 100%;
     height: 100%;
     transform-origin: 0 0;
+  }
+
+  /* At its new size under the still while its client catches up. Not
+     hidden: a hidden <app> reports no area and its window stops drawing. */
+  .under {
+    opacity: 0;
+  }
+
+  .still {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    pointer-events: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
