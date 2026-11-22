@@ -24,9 +24,10 @@
 
 <script lang="ts">
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
+  import { PreviewedWindow } from "@domicile-desktop/sdk/previewed-window";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
-  import { MediaQuery } from "svelte/reactivity";
+  import { MediaQuery, SvelteMap } from "svelte/reactivity";
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import {
@@ -64,7 +65,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, windows } = useDomicile();
+  const { browser, capture, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const pages = watch(browser, "change", () => browser.windows);
@@ -127,10 +128,35 @@
   });
 
   // Rearranges the strip around the active window; it keeps the keyboard.
+  // A window the change resizes is drawn as a still of itself first (see the
+  // settle below), so the change waits for its stills; changes queue behind
+  // each other in order.
+  let rearranging = Promise.resolve();
   const rearrange = (change: (columns: Columns, key: string) => Columns) => {
-    if (active !== undefined) {
-      columns = change($state.snapshot(columns) as Columns, active);
+    const key = active;
+    if (key === undefined) {
+      return;
     }
+    rearranging = rearranging
+      .then(async () => {
+        const area = { view: viewWidth, gap, height: viewHeight };
+        const before = place($state.snapshot(columns) as Columns, area);
+        const after = place(change($state.snapshot(columns) as Columns, key), area);
+        const resized = [...after].filter(([each, box]) => {
+          const was = before.get(each);
+          return was !== undefined && (was.width !== box.width || was.height !== box.height);
+        });
+        const taken = reducedMotion.current
+          ? []
+          : await Promise.all(resized.map(async ([each]) => [each, await stillOf(each)] as const));
+        for (const [each, still] of taken) {
+          if (still !== undefined) {
+            stills.set(each, still);
+          }
+        }
+        columns = change($state.snapshot(columns) as Columns, key);
+      })
+      .catch((error: unknown) => console.error("[windows] rearranging", error));
   };
 
   // While a page has the keyboard, keys never reach the shell's document, so
@@ -299,10 +325,56 @@
   //
   // Where it was is where it was drawn, read before the DOM updates: mid-way
   // through a settle when a new one interrupts it, so nothing jumps.
+  //
+  // A resized window crossfades as niri's do: a still of it at its old size
+  // covers it, scaled with the tile, and fades out as the tile settles. The
+  // scale stretches the client's new drawing up to twice over; under the
+  // still, it shows only as the scale nears 1.
   const reducedMotion = new MediaQuery("prefers-reduced-motion: reduce");
   const SETTLE_CURVE = "cubic-bezier(0.2, 0, 0, 1)";
+  // A still slower than this is not worth holding the change for.
+  const STILL_WAIT_MS = 150;
   const tiles: Record<string, HTMLElement | null> = {};
+  const stillImages: Record<string, HTMLImageElement | null> = {};
+  const stills = new SvelteMap<string, string>();
   let drawnBefore = new Map<string, DOMRect>();
+
+  // Decoded before it is shown, so its first frame has it.
+  const stillOf = async (key: string): Promise<string | undefined> => {
+    const page = (pages.current ?? []).find((each) => keyOf(each) === key);
+    const taking = capture
+      .preview(page === undefined ? PreviewedWindow.App(key) : PreviewedWindow.Browser(page.id))
+      .then((taken) =>
+        taken.match({
+          Ok: async (still) => {
+            const image = new Image();
+            image.src = still;
+            await image.decode();
+            return still;
+          },
+          Err: (error) => {
+            console.error("[windows] no still of", key, error);
+            return undefined;
+          },
+        }),
+      );
+    const late = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), STILL_WAIT_MS));
+    return Promise.race([taking, late]);
+  };
+
+  const fadeStill = (key: string) => {
+    const still = stills.get(key);
+    const image = stillImages[key];
+    if (still === undefined || image === undefined || image === null || image.getAnimations().length > 0) {
+      return;
+    }
+    const fading = image.animate([{ opacity: 1 }, { opacity: 0 }], { duration: settle, easing: SETTLE_CURVE, fill: "forwards" });
+    fading.onfinish = () => {
+      if (stills.get(key) === still) {
+        stills.delete(key);
+      }
+    };
+  };
 
   // Before the DOM takes the new boxes.
   $effect.pre(() => {
@@ -328,8 +400,10 @@
       for (const [key, tile] of Object.entries(tiles)) {
         const before = drawnBefore.get(key);
         if (tile === null || before === undefined || before.width === 0 || before.height === 0) {
+          stills.delete(key);
           continue;
         }
+        fadeStill(key);
         for (const running of tile.getAnimations()) {
           running.cancel();
         }
@@ -359,6 +433,13 @@
   };
 </script>
 
+{#snippet still(key: string)}
+  {@const url = stills.get(key)}
+  {#if url !== undefined}
+    <img class="still" src={url} alt="" bind:this={stillImages[key]} />
+  {/if}
+{/snippet}
+
 <div class="view" bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
   <!-- Two append-only lists, so no element ever moves in the document: a
        moved <webview> reconnects, and its page shows in one view at a time. -->
@@ -374,6 +455,7 @@
       style:height="{box?.height ?? 0}px"
     >
       <app app-id={window.appId}></app>
+      {@render still(window.appId)}
     </div>
   {/each}
   {#each pages.current ?? [] as page (page.id)}
@@ -399,6 +481,7 @@
         }}
         onfocusrequest={() => focus(key)}
       />
+      {@render still(key)}
     </div>
   {/each}
 </div>
@@ -449,5 +532,16 @@
     display: block;
     width: 100%;
     height: 100%;
+  }
+
+  /* Stretched to the tile's new box; the settle's scale takes it back to its
+     own size. Under the active outline, which comes after it. */
+  .still {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
   }
 </style>
