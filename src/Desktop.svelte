@@ -9,18 +9,29 @@
   // Menus and tooltips have a parent; they are not tiled.
   const tiled = $derived(windows.current.filter((window) => window.parent === undefined));
 
-  const terminal = () => domicile.processes.launch(["kitty"]);
+  // SIGTERM ends domicile cleanly. Its control socket is
+  // domicile-ipc.<launcher pid>.sock, and every app it starts has it.
+  const quit = ["sh", "-c", 'p=${DOMICILE_SOCK##*/domicile-ipc.}; kill -TERM "${p%.sock}"'];
+  const bindings: Record<string, string[]> = {
+    "Meta+Return": ["kitty"],
+    "Meta+Shift+E": quit,
+  };
 
   $effect(() => {
-    domicile.keyboard.grab("Meta+Return");
+    for (const chord of Object.keys(bindings)) {
+      domicile.keyboard.grab(chord);
+    }
     const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => {
-      if (chord === "Meta+Return") {
-        terminal();
+      const argv = bindings[chord];
+      if (argv !== undefined) {
+        domicile.processes.launch(argv);
       }
     });
     return () => {
       unlisten();
-      domicile.keyboard.ungrab("Meta+Return");
+      for (const chord of Object.keys(bindings)) {
+        domicile.keyboard.ungrab(chord);
+      }
     };
   });
 </script>
