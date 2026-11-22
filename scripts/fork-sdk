@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Build the SDK from the domicile checkout beside this one (DOMICILE_CHECKOUT)
+# into .fork-sdk/, which package.json installs: the desktop runs that
+# checkout's engine, and the published SDK lags its wire protocol. A packed
+# tarball, not a file: directory, because the checkout's package.json holds
+# catalog: and workspace: versions only its own workspace resolves.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+checkout=${DOMICILE_CHECKOUT:-$here/../domicile}
+
+cd "$checkout"
+bun install --frozen-lockfile >&2
+cd packages/chrome-sdk
+bun run build >&2
+rm -rf "$here/.fork-sdk"
+bun pm pack --destination "$here/.fork-sdk" >&2
+mv "$here"/.fork-sdk/*.tgz "$here/.fork-sdk/sdk.tgz"
+
+cd "$here"
+# The tarball keeps its name and version across rebuilds; drop the cached copy.
+rm -rf node_modules/.bun/@domicile-desktop+sdk@*
+bun install >&2

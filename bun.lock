@@ -6,7 +6,7 @@
       "name": "domicile-svelte-workspace",
       "devDependencies": {
         "@cprussin/option-result": "^2.0.1",
-        "@domicile-desktop/sdk": "2.2.0",
+        "@domicile-desktop/sdk": "file:.fork-sdk/sdk.tgz",
         "@domicile-desktop/system-audio": "1.1.2",
         "@sveltejs/vite-plugin-svelte": "^7.3.1",
         "@types/bun": "^1.3.0",
@@ -144,12 +144,15 @@
       },
     },
   },
+  "overrides": {
+    "@domicile-desktop/sdk": "file:.fork-sdk/sdk.tgz",
+  },
   "packages": {
     "@cprussin/option-result": ["@cprussin/option-result@2.0.1", "", {}, "sha512-FtR98rdUFGBiOclgsu4am/LfeDKGYVoEoScSTw2HRJJ/J2vK35Eq7imCMM4IaRZJwdTycO83eBpv8IvEXQr6dw=="],
 
     "@domicile-desktop/react": ["@domicile-desktop/react@0.1.2", "", { "dependencies": { "@cprussin/option-result": "^2.0.1", "@domicile-desktop/sdk": "2.2.0" }, "peerDependencies": { "react": "^19.2.8", "react-dom": "^19.2.8" } }, "sha512-JVPm62ssY3xyju9VX7GMqebgW/ftv4eDztdbg1AkSBvm3GowJYrAqpzufvcsQLdpRycq37OMns2YGbIOAD14YQ=="],
 
-    "@domicile-desktop/sdk": ["@domicile-desktop/sdk@2.2.0", "", { "dependencies": { "@cprussin/option-result": "^2.0.1", "zod": "^4.5.4" } }, "sha512-CbXuIUvQG6Iz2iz20h8xy/tn8eomNXi/oPdplUJSdEGDtjTgesw9/NB658enPrfXU+9t4cPDPuX0YVAtcLCscw=="],
+    "@domicile-desktop/sdk": ["@domicile-desktop/sdk@.fork-sdk/sdk.tgz", { "dependencies": { "@cprussin/option-result": "^2.0.1", "zod": "^4.6.7" } }, "sha512-uIPscoXKclBPj1fT3OzA4NyAqlJenDIZ1NNx8DVSeuFp6BQLq8vEOarTuYNAJEmIJ+aEqNT2cornd7RKiGNuqg=="],
 
     "@domicile-desktop/system-apps": ["@domicile-desktop/system-apps@1.2.0", "", { "dependencies": { "@cprussin/option-result": "^2.0.1", "@domicile-desktop/sdk": "2.2.0", "zod": "^4.5.4" } }, "sha512-usy/vAcuExdDp1XjbBwThWJSlMKtQQjG2M4p43qRrJYTYt6XadVOo1ciXRMvgZGApwbAhzvfWZDi3moJtxdZ/g=="],
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Err, Ok, type Result } from "@cprussin/option-result";
+  import type { CommandRan, ShellCommand } from "@domicile-desktop/sdk/shell-command";
   import { Bar } from "@domicile-svelte/bar";
   import Clock from "@domicile-svelte/bar-clock";
   import Extensions from "@domicile-svelte/bar-extensions";
@@ -134,52 +136,102 @@
 
   // `domicile send-shell <command>...`: the layout actions by name, as niri
   // msg has them, for scripts and for testing without the keyboard.
-  const commands: Record<string, (args: readonly string[]) => void> = {
-    focus: ([direction]) => {
-      if (direction === "left" || direction === "right" || direction === "up" || direction === "down") {
-        layout?.move(direction);
-      }
+  type Command = {
+    usage: string;
+    description: string;
+    run: (args: readonly string[]) => Result<CommandRan, string>;
+  };
+  const ran = (action: () => void): Result<CommandRan, string> => {
+    action();
+    return Ok("ran");
+  };
+  const commands: Record<string, Command> = {
+    focus: {
+      usage: "focus left|right|up|down",
+      description: "Focus the neighbor of the active window.",
+      run: ([direction]) =>
+        direction === "left" || direction === "right" || direction === "up" || direction === "down"
+          ? ran(() => layout?.move(direction))
+          : Err("focus takes left, right, up or down"),
     },
-    maximize: () => layout?.maximize(),
-    "cycle-width": () => layout?.cycleWidth(),
-    center: () => layout?.center(),
-    consume: () => layout?.consume(),
-    expel: () => layout?.expel(),
-    "consume-or-expel": ([side]) => {
-      if (side === "left" || side === "right") {
-        layout?.consumeOrExpel(side);
-      }
+    maximize: {
+      usage: "maximize",
+      description: "Maximize the active column, or give it back its width.",
+      run: () => ran(() => layout?.maximize()),
     },
-    park: () => layout?.park(),
-    close: () => layout?.close(),
-    "settle-ms": ([ms]) => {
-      const value = Number(ms);
-      if (Number.isFinite(value) && value >= 0) {
-        settle = value;
-      }
+    "cycle-width": {
+      usage: "cycle-width",
+      description: "Step the active column through the preset widths.",
+      run: () => ran(() => layout?.cycleWidth()),
     },
+    center: {
+      usage: "center",
+      description: "Scroll the active column to the middle of the view.",
+      run: () => ran(() => layout?.center()),
+    },
+    consume: {
+      usage: "consume",
+      description: "Take the next column's top window into the active column.",
+      run: () => ran(() => layout?.consume()),
+    },
+    expel: {
+      usage: "expel",
+      description: "Move the active window to a column of its own.",
+      run: () => ran(() => layout?.expel()),
+    },
+    "consume-or-expel": {
+      usage: "consume-or-expel left|right",
+      description: "niri's consume-or-expel-window-left and -right.",
+      run: ([side]) =>
+        side === "left" || side === "right"
+          ? ran(() => layout?.consumeOrExpel(side))
+          : Err("consume-or-expel takes left or right"),
+    },
+    park: {
+      usage: "park",
+      description: "Take the active window off the strip.",
+      run: () => ran(() => layout?.park()),
+    },
+    close: {
+      usage: "close",
+      description: "Ask the active window to close.",
+      run: () => ran(() => layout?.close()),
+    },
+    "settle-ms": {
+      usage: "settle-ms <ms>",
+      description: "Set how long tiles take to ease into a new box.",
+      run: ([ms]) => {
+        const value = Number(ms);
+        return Number.isFinite(value) && value >= 0
+          ? ran(() => (settle = value))
+          : Err("settle-ms takes a number of milliseconds");
+      },
+    },
+  };
+
+  const runCommand = ([name, ...args]: readonly string[]): Result<CommandRan, string> => {
+    const command = name === undefined ? undefined : commands[name];
+    return command === undefined ? Err(`unknown command: ${name ?? ""}`) : command.run(args);
   };
 
   $effect(() => {
     let stop = () => {};
-    const hear = async (items: ReadableStream<readonly string[]>) => {
+    const hear = async (items: ReadableStream<ShellCommand>) => {
       const reader = items.getReader();
       for (;;) {
         const { done, value } = await reader.read();
         if (done) {
           return;
         }
-        const [name, ...args] = value;
-        const command = name === undefined ? undefined : commands[name];
-        if (command === undefined) {
-          console.error("[shell] unknown command", value);
-        } else {
-          command(args);
-        }
+        domicile.shell
+          .answer(value.sent, runCommand(value.words))
+          .then((answered) => answered.match({ Ok: () => undefined, Err: (error) => console.error("[shell] answer", error) }))
+          .catch((error: unknown) => console.error("[shell] answer", error));
       }
     };
+    const help = Object.values(commands).map(({ usage, description }) => ({ usage, description }));
     domicile.shell
-      .commands()
+      .commands(help, [])
       .then((listening) =>
         listening.match({
           Ok: ({ items, stop: end }) => {
