@@ -12,6 +12,8 @@
   } from "@domicile-desktop/sdk/webview-element";
   import { untrack } from "svelte";
 
+  import { addressOf } from "./address";
+
   const {
     window: browserWindow,
     onfocus,
@@ -114,16 +116,11 @@
   };
 
   const go = (text: string) => {
-    const trimmed = text.trim();
-    if (page === undefined || trimmed === "") {
+    const address = addressOf(text);
+    if (page === undefined || address === undefined) {
       return;
     }
-    const url = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
-      ? trimmed
-      : /^[^\s]+\.[^\s]+$/.test(trimmed)
-        ? `https://${trimmed}`
-        : `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`;
-    page.src = url;
+    page.src = address.url;
     page.focus();
   };
 </script>
