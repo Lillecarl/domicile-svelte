@@ -27,7 +27,8 @@
   const refused = listen(fromListening(() => session.unlockRefusals(), "unlock refusals"));
   const clock = now();
 
-  let input = $state<HTMLInputElement>();
+  // bind:this sets null, not undefined, when the field goes on unlock.
+  let input = $state<HTMLInputElement | null>();
   let passphrase = $state("");
   let pending = $state(false);
   let refusedAt = $state(0);
@@ -64,8 +65,10 @@
   // The page keeps every key while locked; the field must hold the focus.
   // Taken back after a focusin elsewhere finishes, as the docs say.
   let refocus: ReturnType<typeof setTimeout> | undefined;
+  // Run again on unlock with no field, this would take the keyboard from the
+  // window `onunlock` just gave it to.
   $effect(() => {
-    if (input === undefined) {
+    if (input === undefined || input === null) {
       return;
     }
     const field = input;

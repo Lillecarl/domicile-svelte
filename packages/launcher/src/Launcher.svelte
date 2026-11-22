@@ -22,14 +22,15 @@
 
   let query = $state("");
   let selected = $state(0);
-  let input = $state<HTMLInputElement>();
+  // bind:this sets null, not undefined, when the field goes.
+  let input = $state<HTMLInputElement | null>();
   let list = $state<HTMLElement>();
   const items = $derived(sources.flatMap((source) => source.search(query)));
   const chosen = $derived(Math.min(selected, items.length - 1));
 
   // A page has the keyboard until the shell takes it.
   $effect(() => {
-    if (input !== undefined) {
+    if (input !== undefined && input !== null) {
       windows.focusShell();
       input.focus();
     }
