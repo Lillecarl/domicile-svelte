@@ -19,6 +19,8 @@
     "Meta+Return": launch(["kitty"]),
     // croshome installs `domicile-quit`: SIGTERM to the launcher.
     "Meta+Shift+E": launch(["domicile-quit"]),
+    "Meta+b": () => domicile.browser.open("about:blank"),
+    "Meta+q": () => layout?.close(),
     "Meta+h": () => layout?.move("left"),
     "Meta+j": () => layout?.move("down"),
     "Meta+k": () => layout?.move("up"),
