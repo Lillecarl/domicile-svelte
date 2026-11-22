@@ -50,6 +50,26 @@ export const neighbor = (columns: Columns, focused: string | undefined, directio
   }
 };
 
+export type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * Each window's box on the strip, before scrolling: columns `column` wide,
+ * windows in a column sharing `height`, `gap` apart.
+ */
+export const place = (
+  columns: Columns,
+  { column, gap, height }: { column: number; gap: number; height: number },
+): Map<string, Box> =>
+  new Map(
+    columns.flatMap((stack, index) => {
+      const each = Math.max(0, (height - gap * (stack.length - 1)) / stack.length);
+      return stack.map((id, row): [string, Box] => [
+        id,
+        { x: index * (column + gap), y: row * (each + gap), width: column, height: each },
+      ]);
+    }),
+  );
+
 /**
  * The strip's scroll offset that shows column `index` whole, moving as little
  * as possible from `scroll`.

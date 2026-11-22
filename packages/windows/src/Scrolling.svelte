@@ -1,13 +1,18 @@
 <!--
   Windows in columns on a strip that scrolls to keep the focused column in
-  view, as niri lays them out. `move` focuses the neighbor in a direction;
-  bind keys to it.
+  view, as niri lays them out. Native windows and browser windows tile
+  alike; a browser window that asked for a size (an extension's popup window,
+  a page's sized window.open) floats over the strip at that size.
+
+  Bind keys to `move`, `close` and `refocus`.
 -->
 <script lang="ts">
+  import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
 
-  import { type Columns, columnOf, type Direction, neighbor, scrollTo, sync } from "./columns";
+  import BrowserWindow from "./BrowserWindow.svelte";
+  import { type Columns, columnOf, type Direction, neighbor, place, scrollTo, sync } from "./columns";
 
   const {
     width = 0.5,
@@ -18,96 +23,218 @@
     gap?: number;
   } = $props();
 
-  const { windows } = useDomicile();
+  const { browser, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
+  const pages = watch(browser, "change", () => browser.windows);
+
+  // A browser window's key; a native window's is its appId.
+  const keyOf = (page: Page) => `browser:${page.id}`;
+  const floats = (page: Page) => page.width > 0 || page.height > 0;
+
+  // Menus and tooltips have a parent; the engine draws them with it.
+  const apps = $derived(list.current.filter((window) => window.parent === undefined));
+  const tiledPages = $derived((pages.current ?? []).filter((page) => !floats(page)));
 
   let columns = $state<Columns>([]);
-  let view = $state(0);
+  let viewWidth = $state(0);
+  let viewHeight = $state(0);
   let scroll = $state(0);
-  const column = $derived(Math.max(0, (view - gap) * width));
+  const column = $derived(Math.max(0, (viewWidth - gap) * width));
+  const boxes = $derived(place(columns, { column, gap, height: viewHeight }));
 
-  // Both effects read the state they write untracked: tracked, each write
-  // would rerun the effect that made it.
-  $effect(() => {
-    // Menus and tooltips have a parent; they are not tiled.
-    const open = list.current.filter((window) => window.parent === undefined).map((window) => window.appId);
-    const at = focused.current;
-    columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at));
-  });
-
-  $effect(() => {
-    const index = columnOf(columns, focused.current);
-    const sizes = { column, gap, view };
-    if (index !== -1 && view > 0) {
-      scroll = untrack(() => scrollTo(scroll, index, sizes));
-    }
-  });
-
-  // The window that last held the keyboard. Shell UI that takes the keyboard
-  // (a popup, a launcher) leaves `focused` undefined meanwhile.
+  // The window that holds the keyboard, or held it last while shell UI (a
+  // popup, a launcher) has it. Native focus reports itself; a browser window
+  // is the shell's own page, so the shell tracks it here.
   let active = $state<string>();
+  const frames: Record<string, BrowserWindow> = {};
+
   $effect(() => {
     if (focused.current !== undefined) {
       active = focused.current;
     }
   });
 
-  /** Give the keyboard back to the window that last held it. */
-  export const refocus = () => {
-    if (active !== undefined && list.current.some((window) => window.appId === active)) {
-      windows.focus(active);
+  // The effects below read the state they write untracked: tracked, each
+  // write would rerun the effect that made it.
+  $effect(() => {
+    const open = [...apps.map((window) => window.appId), ...tiledPages.map(keyOf)];
+    const at = active;
+    columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at));
+  });
+
+  $effect(() => {
+    const index = columnOf(columns, active);
+    const sizes = { column, gap, view: viewWidth };
+    if (index !== -1 && viewWidth > 0) {
+      scroll = untrack(() => scrollTo(scroll, index, sizes));
+    }
+  });
+
+  // While a page has the keyboard, keys never reach the shell's document, so
+  // a native window cannot get them: the page must let go first.
+  const releasePage = () => {
+    const page = document.activeElement;
+    if (page instanceof HTMLElement && page.closest(".browser") !== null) {
+      page.blur();
     }
   };
 
-  export const move = (direction: Direction) => {
-    const next = neighbor(columns, focused.current, direction);
-    if (next !== undefined) {
-      windows.focus(next);
+  const exists = (key: string) =>
+    apps.some((window) => window.appId === key) || (pages.current ?? []).some((page) => keyOf(page) === key);
+
+  const focus = (key: string) => {
+    const frame = frames[key];
+    if (frame === undefined) {
+      releasePage();
+      windows.focus(key);
+    } else {
+      active = key;
+      windows.focusShell();
+      frame.focus();
     }
+  };
+
+  // A page that opens takes the keyboard, as a native window does
+  // (focusNewWindows). Pages open when the list first arrives were there
+  // before this shell, as after `domicile load-shell`, and are left alone.
+  let seen: Set<string> | undefined;
+  $effect(() => {
+    const current = pages.current;
+    if (current === undefined) {
+      return;
+    }
+    const keys = current.map(keyOf);
+    untrack(() => {
+      const fresh = seen === undefined ? [] : keys.filter((key) => !seen?.has(key));
+      seen = new Set(keys);
+      const last = fresh.at(-1);
+      if (last !== undefined) {
+        // Its frame mounts on the next render.
+        void tick().then(() => focus(last));
+      }
+    });
+  });
+
+  /** Give the keyboard back to the window that last held it. */
+  export const refocus = () => {
+    if (active !== undefined && exists(active)) {
+      focus(active);
+    }
+  };
+
+  /** Focus the neighbor of the active window in `direction`. */
+  export const move = (direction: Direction) => {
+    const next = neighbor(columns, active, direction);
+    if (next !== undefined) {
+      focus(next);
+    }
+  };
+
+  /** Ask the active window to close. */
+  export const close = () => {
+    const page = (pages.current ?? []).find((each) => keyOf(each) === active);
+    if (page !== undefined) {
+      browser.close(page.id);
+    } else if (active !== undefined && exists(active)) {
+      windows.close(active);
+    }
+  };
+
+  const floatBox = (page: Page) => {
+    const w = Math.min(page.width || 480, viewWidth);
+    const h = Math.min(page.height || 640, viewHeight);
+    return { x: (viewWidth - w) / 2, y: (viewHeight - h) / 2, width: w, height: h };
   };
 </script>
 
-<div class="view" bind:clientWidth={view}>
-  <div class="strip" style:gap="{gap}px" style:translate="{-scroll}px 0">
-    {#each columns as stack, index (stack[0])}
-      <div class="column" style:width="{column}px" style:gap="{gap}px" data-index={index}>
-        {#each stack as appId (appId)}
-          <app app-id={appId} class:focused={appId === focused.current}></app>
-        {/each}
-      </div>
-    {/each}
-  </div>
+<div class="view" bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
+  <!-- Two append-only lists, so no element ever moves in the document: a
+       moved <webview> reconnects, and its page shows in one view at a time. -->
+  {#each apps as window (window.appId)}
+    {@const box = boxes.get(window.appId)}
+    <div
+      class="tile"
+      class:hidden={box === undefined}
+      class:active={window.appId === active}
+      style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
+      style:width="{box?.width ?? 0}px"
+      style:height="{box?.height ?? 0}px"
+    >
+      <app app-id={window.appId}></app>
+    </div>
+  {/each}
+  {#each pages.current ?? [] as page (page.id)}
+    {@const key = keyOf(page)}
+    {@const floating = floats(page)}
+    {@const box = floating ? floatBox(page) : boxes.get(key)}
+    <div
+      class="tile"
+      class:floating
+      class:hidden={box === undefined}
+      class:active={key === active}
+      style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
+      style:width="{box?.width ?? 0}px"
+      style:height="{box?.height ?? 0}px"
+    >
+      <BrowserWindow
+        bind:this={frames[key]}
+        window={page}
+        onfocus={() => {
+          active = key;
+          windows.focusShell();
+        }}
+        onfocusrequest={() => focus(key)}
+      />
+    </div>
+  {/each}
 </div>
 
 <style>
   .view {
+    position: relative;
     flex: 1;
     min-height: 0;
+    margin: 8px 0;
     overflow: hidden;
-    padding: 8px 0;
   }
 
-  .strip {
-    display: flex;
-    height: 100%;
+  .tile {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 8px;
+    overflow: hidden;
     transition: translate 180ms ease-out;
   }
 
-  .column {
-    display: flex;
-    flex: none;
-    flex-direction: column;
-    height: 100%;
+  /* Not placed yet. A page under display: none stays mounted, as a
+     background tab. */
+  .hidden {
+    display: none;
+  }
+
+  .floating {
+    z-index: 1;
+    box-shadow: 0 8px 32px #000a;
+    transition: none;
+  }
+
+  /* Over the window: a native window is a layer that would cover an inset
+     outline, and the view clips one drawn outside. */
+  .active::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: 2px solid #74c7ec;
+    border-radius: inherit;
+    pointer-events: none;
   }
 
   app {
-    flex: 1;
-    min-height: 0;
-    border-radius: 8px;
-  }
-
-  .focused {
-    outline: 2px solid #74c7ec;
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 </style>

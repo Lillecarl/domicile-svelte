@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { neighbor, scrollTo, sync } from "./columns";
+import { neighbor, place, scrollTo, sync } from "./columns";
+
+describe("place", () => {
+  test("puts columns side by side and splits a column's height", () => {
+    const boxes = place([["a"], ["b", "c"]], { column: 100, gap: 10, height: 210 });
+    expect(boxes.get("a")).toEqual({ x: 0, y: 0, width: 100, height: 210 });
+    expect(boxes.get("b")).toEqual({ x: 110, y: 0, width: 100, height: 100 });
+    expect(boxes.get("c")).toEqual({ x: 110, y: 110, width: 100, height: 100 });
+  });
+});
 
 describe("sync", () => {
   test("opens a new window as a column right of the focused one", () => {
