@@ -287,20 +287,50 @@
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
   };
 
-  // A window whose tile animates to a new size keeps the size it had, and is
-  // stretched to the tile, as niri stretches the old buffer: its client
-  // resizes once, at the end. The new size then holds the page's frame until
-  // the client draws at it, so the swap shows no gap.
+  // A window whose tile animates to a new size takes the new size at once, so
+  // its client starts drawing at it, and is scaled from the tile's current
+  // size down or up to 1 as the tile grows or shrinks to it, as niri scales
+  // a window. Resized at the end instead, the client drew its old frame in
+  // part of the new box until it caught up.
   //
-  // The stretch is a `scale` transition with the tile's timing: the tile's
-  // width runs w0 → w1 on the same curve as w0 · scale runs w0 → w1.
+  // The scale runs on the tile's duration and curve, so the window's drawn
+  // size, final · scale, follows the tile's animated width and height.
   const reducedMotion = new MediaQuery("prefers-reduced-motion: reduce");
-  const stretched = new SvelteMap<string, { width: number; height: number }>();
-  let lastBoxes = new Map<string, { width: number; height: number }>();
-  // Ends a stretch whose transitionend never comes, as when no transition ran.
-  const fallbacks = new Map<string, ReturnType<typeof setTimeout>>();
-  // The tiles' move and resize duration, which the CSS reads as --glide.
+  // The tiles' move and resize timing, which the CSS reads as --glide.
   const GLIDE_MS = 220;
+  const GLIDE_CURVE = "cubic-bezier(0.2, 0, 0, 1)";
+  // A surface's size while it scales: the final size, fixed, since the tile's
+  // size is animating and the client must see only the final one.
+  const settling = new SvelteMap<string, { width: number; height: number }>();
+  const surfaces: Record<string, HTMLElement | null> = {};
+  let lastBoxes = new Map<string, { width: number; height: number }>();
+
+  const scaleIn = (key: string, size: { width: number; height: number }) => {
+    const surface = surfaces[key];
+    const tile = surface?.parentElement;
+    if (surface === undefined || surface === null || tile === null || tile === undefined) {
+      return;
+    }
+    // Where the tile is now: its old size, or mid-way when this retargets.
+    const now = tile.getBoundingClientRect();
+    for (const running of surface.getAnimations()) {
+      running.cancel();
+    }
+    settling.set(key, size);
+    const animation = surface.animate(
+      [{ scale: `${now.width / size.width} ${now.height / size.height}` }, { scale: "1 1" }],
+      { duration: GLIDE_MS, easing: GLIDE_CURVE },
+    );
+    animation.finished.then(
+      () => {
+        if (settling.get(key) === size) {
+          settling.delete(key);
+        }
+      },
+      // Cancelled by a retarget, which settles it itself.
+      () => undefined,
+    );
+  };
 
   $effect(() => {
     const next = boxes;
@@ -308,48 +338,18 @@
       for (const [key, box] of next) {
         const before = lastBoxes.get(key);
         const resized = before !== undefined && (before.width !== box.width || before.height !== box.height);
-        if (!resized || before.width <= 0 || before.height <= 0 || reducedMotion.current) {
-          continue;
+        if (resized && before.width > 0 && before.height > 0 && !reducedMotion.current) {
+          scaleIn(key, { width: box.width, height: box.height });
         }
-        // A retarget mid-animation keeps the size the window still has.
-        if (!stretched.has(key)) {
-          stretched.set(key, before);
-        }
-        clearTimeout(fallbacks.get(key));
-        fallbacks.set(
-          key,
-          setTimeout(() => stretched.delete(key), GLIDE_MS * 2),
-        );
       }
-      for (const key of stretched.keys()) {
+      for (const key of settling.keys()) {
         if (!next.has(key)) {
-          stretched.delete(key);
+          settling.delete(key);
         }
       }
       lastBoxes = new Map([...next].map(([key, box]) => [key, { width: box.width, height: box.height }]));
     });
   });
-
-  // Both of a tile's size transitions end together; the first ends the stretch.
-  const sizeSettled = (event: TransitionEvent, key: string) => {
-    if (event.target === event.currentTarget && (event.propertyName === "width" || event.propertyName === "height")) {
-      clearTimeout(fallbacks.get(key));
-      stretched.delete(key);
-    }
-  };
-
-  $effect(() => () => {
-    for (const timer of fallbacks.values()) {
-      clearTimeout(timer);
-    }
-  });
-
-  const stretchOf = (key: string, box: { width: number; height: number } | undefined) => {
-    const size = stretched.get(key);
-    return size === undefined || box === undefined
-      ? undefined
-      : { ...size, scale: `${box.width / size.width} ${box.height / size.height}` };
-  };
 
   const floatBox = (page: Page) => {
     const w = Math.min(page.width || 480, viewWidth);
@@ -363,13 +363,13 @@
   bind:clientWidth={viewWidth}
   bind:clientHeight={viewHeight}
   style:--glide="{GLIDE_MS}ms"
-  style:--glide-curve="cubic-bezier(0.2, 0, 0, 1)"
+  style:--glide-curve={GLIDE_CURVE}
 >
   <!-- Two append-only lists, so no element ever moves in the document: a
        moved <webview> reconnects, and its page shows in one view at a time. -->
   {#each apps as window (window.appId)}
     {@const box = boxes.get(window.appId)}
-    {@const stretch = stretchOf(window.appId, box)}
+    {@const settled = settling.get(window.appId)}
     <div
       class="tile"
       class:hidden={box === undefined}
@@ -377,14 +377,12 @@
       style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
-      ontransitionend={(event) => sizeSettled(event, window.appId)}
     >
       <div
         class="surface"
-        class:stretching={stretch !== undefined}
-        style:width={stretch && `${stretch.width}px`}
-        style:height={stretch && `${stretch.height}px`}
-        style:scale={stretch?.scale}
+        bind:this={surfaces[window.appId]}
+        style:width={settled && `${settled.width}px`}
+        style:height={settled && `${settled.height}px`}
       >
         <app app-id={window.appId}></app>
       </div>
@@ -394,7 +392,7 @@
     {@const key = keyOf(page)}
     {@const floating = floats(page)}
     {@const box = parked.includes(key) ? undefined : floating ? floatBox(page) : boxes.get(key)}
-    {@const stretch = floating ? undefined : stretchOf(key, box)}
+    {@const settled = floating ? undefined : settling.get(key)}
     <div
       class="tile"
       class:floating
@@ -403,14 +401,12 @@
       style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
       style:width="{box?.width ?? 0}px"
       style:height="{box?.height ?? 0}px"
-      ontransitionend={(event) => sizeSettled(event, key)}
     >
       <div
         class="surface"
-        class:stretching={stretch !== undefined}
-        style:width={stretch && `${stretch.width}px`}
-        style:height={stretch && `${stretch.height}px`}
-        style:scale={stretch?.scale}
+        bind:this={surfaces[key]}
+        style:width={settled && `${settled.width}px`}
+        style:height={settled && `${settled.height}px`}
       >
         <BrowserWindow
           bind:this={frames[key]}
@@ -448,16 +444,12 @@
       height var(--glide) var(--glide-curve);
   }
 
-  /* The window inside a tile. Stretched, it keeps its size and is scaled to
-     the tile on the tile's own timing. */
+  /* The window inside a tile. While the tile resizes it has the final size,
+     fixed, and scaleIn scales it to the tile. */
   .surface {
     width: 100%;
     height: 100%;
     transform-origin: 0 0;
-  }
-
-  .stretching {
-    transition: scale var(--glide) var(--glide-curve);
   }
 
   @media (prefers-reduced-motion: reduce) {
