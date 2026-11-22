@@ -15,6 +15,7 @@
     "@domicile-svelte/bar-volume": "workspace:*",
     "@domicile-svelte/bar-window-title": "workspace:*",
     "@domicile-svelte/launcher": "workspace:*",
+    "@domicile-svelte/lock": "workspace:*",
     "@domicile-svelte/svelte": "workspace:*",
     "@domicile-svelte/windows": "workspace:*"
   }

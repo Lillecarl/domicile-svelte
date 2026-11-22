@@ -7,11 +7,15 @@
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
-  import { useDomicile } from "@domicile-svelte/svelte";
+  import { Lock } from "@domicile-svelte/lock";
+  import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
+
+  // Undefined until the compositor first says; hidden until then too.
+  const locked = watch(domicile.session, "lockchange", () => domicile.session.locked);
 
   let layout = $state<ReturnType<typeof Scrolling>>();
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
@@ -73,6 +77,8 @@
       openLauncher([windowList], "Windows");
     },
     "Meta+p": () => layout?.park(),
+    // swaylock's key under niri.
+    "Ctrl+Alt+Delete": () => domicile.session.lock(),
     // The layout keys as croshome's niri config binds them.
     "Meta+h": () => layout?.move("left"),
     "Meta+j": () => layout?.move("down"),
@@ -122,7 +128,9 @@
   });
 </script>
 
-<div class="desktop">
+<!-- Hidden under the lock screen as well as covered by it: windows draw
+     nothing while the desktop is locked. -->
+<div class="desktop" class:covered={locked.current !== false}>
   <Bar>
     {#snippet left()}<Keymap />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
@@ -136,6 +144,7 @@
     {/key}
   {/if}
 </div>
+<Lock onunlock={() => layout?.refocus()} />
 
 <style>
   .desktop {
@@ -145,5 +154,9 @@
     padding: 0 8px;
     box-sizing: border-box;
     background: #1e1e2e;
+  }
+
+  .covered {
+    visibility: hidden;
   }
 </style>
