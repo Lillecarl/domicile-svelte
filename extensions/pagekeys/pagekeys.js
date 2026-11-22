@@ -1,6 +1,6 @@
 // Vim keys for pages: j/k/d/u/gg/G scroll, f follows a link by its hint, F
-// opens it in a new window, i focuses the field the page wanted focused,
-// Escape leaves an input or the hints.
+// opens it in a new window, i focuses the field the page wanted focused, H and
+// L go back and forward, Escape leaves an input or the hints.
 //
 // The clickable rules follow Vimium's content_scripts/link_hints.js (MIT),
 // the hint strings Vimium C's content/hint_filters.ts (Apache-2.0, Gong
@@ -430,6 +430,8 @@
     f: () => enterHints(false),
     F: () => enterHints(true),
     i: focusWanted,
+    H: () => history.back(),
+    L: () => history.forward(),
   };
 
   // The g of a gg.
