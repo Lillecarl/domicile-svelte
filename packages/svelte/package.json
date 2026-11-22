@@ -1,0 +1,14 @@
+{
+  "name": "@domicile-svelte/svelte",
+  "description": "Svelte 5 bindings for a domicile shell: the desktop in context, and its events as reactive values.",
+  "type": "module",
+  "exports": {
+    ".": { "svelte": "./src/index.ts", "default": "./src/index.ts" }
+  },
+  "scripts": { "check": "tsc -p tsconfig.json" },
+  "peerDependencies": {
+    "@cprussin/option-result": "^2.0.1",
+    "@domicile-desktop/sdk": "^2.2.0",
+    "svelte": "^5.59.1"
+  }
+}
