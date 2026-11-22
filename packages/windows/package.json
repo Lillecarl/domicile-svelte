@@ -1,0 +1,8 @@
+{
+  "name": "@domicile-svelte/windows",
+  "description": "Window policy for a domicile shell: which window gets the keyboard.",
+  "type": "module",
+  "exports": { ".": { "default": "./src/index.ts" } },
+  "scripts": { "check": "tsc -p tsconfig.json" },
+  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0" }
+}

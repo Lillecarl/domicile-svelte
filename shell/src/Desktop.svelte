@@ -6,8 +6,10 @@
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
+  import { focusNewWindows } from "@domicile-svelte/windows";
 
   const domicile = useDomicile();
+  $effect(() => focusNewWindows(domicile.windows));
 
   const windows = watch(domicile.windows, "change", () => domicile.windows.list);
   const focused = watch(domicile.windows, "focuschange", () => domicile.windows.focused);
