@@ -44,6 +44,22 @@
     }
   });
 
+  // The window that last held the keyboard. Shell UI that takes the keyboard
+  // (a popup, a launcher) leaves `focused` undefined meanwhile.
+  let active = $state<string>();
+  $effect(() => {
+    if (focused.current !== undefined) {
+      active = focused.current;
+    }
+  });
+
+  /** Give the keyboard back to the window that last held it. */
+  export const refocus = () => {
+    if (active !== undefined && list.current.some((window) => window.appId === active)) {
+      windows.focus(active);
+    }
+  };
+
   export const move = (direction: Direction) => {
     const next = neighbor(columns, focused.current, direction);
     if (next !== undefined) {
