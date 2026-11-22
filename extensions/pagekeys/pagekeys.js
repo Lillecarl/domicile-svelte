@@ -1,5 +1,6 @@
 // Vim keys for pages: j/k/d/u/gg/G scroll, f follows a link by its hint, F
-// opens it in a new window, Escape leaves an input or the hints.
+// opens it in a new window, i focuses the field the page wanted focused,
+// Escape leaves an input or the hints.
 //
 // The clickable rules and the hint strings follow Vimium's
 // content_scripts/link_hints.js (MIT). It runs in every frame; the frame
@@ -29,6 +30,49 @@ const editable = (element) =>
     element instanceof HTMLTextAreaElement ||
     element instanceof HTMLSelectElement ||
     (element instanceof HTMLInputElement && !NOT_TEXT.has(element.type)));
+
+// --- Input ---------------------------------------------------------------------
+
+// Until the user acts on the page, a field the page focuses itself (an
+// autofocused search box) loses the focus again and waits here for i, as in
+// Vimium's grabBackFocus. A key the page gets, a click, or i ends the guard.
+let wanted;
+let interacted = false;
+
+window.addEventListener(
+  "focusin",
+  (event) => {
+    const target = event.composedPath()[0];
+    if (!interacted && editable(target)) {
+      wanted = target;
+      target.blur();
+    }
+  },
+  true,
+);
+
+window.addEventListener("pointerdown", (event) => (interacted ||= event.isTrusted), true);
+
+const focusInput = (element) => {
+  interacted = true;
+  element.focus();
+};
+
+const firstInput = () => {
+  for (const element of elements(document)) {
+    if (editable(element) && !element.disabled && visibleRect(element) !== undefined) {
+      return element;
+    }
+  }
+  return undefined;
+};
+
+const focusWanted = () => {
+  const target = wanted?.isConnected && !wanted.disabled ? wanted : firstInput();
+  if (target !== undefined) {
+    focusInput(target);
+  }
+};
 
 // --- Scrolling ---------------------------------------------------------------
 
@@ -255,7 +299,7 @@ const follow = (element, newWindow) => {
   if (newWindow && link !== null) {
     window.open(link.href, "_blank", "noopener");
   } else if (editable(element)) {
-    element.focus();
+    focusInput(element);
   } else {
     click(element);
   }
@@ -345,6 +389,7 @@ const commands = {
   G: () => scrollToEnd(1),
   f: () => enterHints(false),
   F: () => enterHints(true),
+  i: focusWanted,
 };
 
 // The g of a gg.
@@ -391,6 +436,8 @@ window.addEventListener(
     if (command !== undefined) {
       consume(event);
       command();
+    } else {
+      interacted ||= event.isTrusted;
     }
   },
   true,
