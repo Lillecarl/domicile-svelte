@@ -107,7 +107,9 @@
       <div class="picture" style:background-image={`url("${background}")`}></div>
     {/if}
     {#if locked.current === true}
-      <time>{clock.current.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+      <!-- 24-hour, as the bar's clock: the engine's locale comes from LANG
+           (en_US, AM/PM), and it does not read LC_TIME. -->
+      <time>{clock.current.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</time>
       <p class="date">{clock.current.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</p>
       <form onsubmit={submit}>
         <input
