@@ -53,7 +53,10 @@
     width = 1 / 2,
     presets = [1 / 3, 1 / 2, 2 / 3],
     gap = 8,
+    settle = 220,
   }: {
+    /** How long a tile takes to ease into a new box, in milliseconds. */
+    settle?: number;
     /** A new column's width, as a proportion of the view's. */
     width?: number;
     /** The widths `cycleWidth` steps through, narrowest first. */
@@ -297,7 +300,6 @@
   // Where it was is where it was drawn, read before the DOM updates: mid-way
   // through a settle when a new one interrupts it, so nothing jumps.
   const reducedMotion = new MediaQuery("prefers-reduced-motion: reduce");
-  const SETTLE_MS = 220;
   const SETTLE_CURVE = "cubic-bezier(0.2, 0, 0, 1)";
   const tiles: Record<string, HTMLElement | null> = {};
   let drawnBefore = new Map<string, DOMRect>();
@@ -344,7 +346,7 @@
         }
         tile.animate(
           [{ transform: `translate(${x}px, ${y}px) scale(${scaleX}, ${scaleY})` }, { transform: "none" }],
-          { duration: SETTLE_MS, easing: SETTLE_CURVE },
+          { duration: settle, easing: SETTLE_CURVE },
         );
       }
     });

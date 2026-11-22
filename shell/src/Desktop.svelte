@@ -127,6 +127,71 @@
       }
     };
   });
+
+  // How long tiles take to ease into a new box; `settle-ms` slows it down to
+  // watch it.
+  let settle = $state(220);
+
+  // `domicile send-shell <command>...`: the layout actions by name, as niri
+  // msg has them, for scripts and for testing without the keyboard.
+  const commands: Record<string, (args: readonly string[]) => void> = {
+    focus: ([direction]) => {
+      if (direction === "left" || direction === "right" || direction === "up" || direction === "down") {
+        layout?.move(direction);
+      }
+    },
+    maximize: () => layout?.maximize(),
+    "cycle-width": () => layout?.cycleWidth(),
+    center: () => layout?.center(),
+    consume: () => layout?.consume(),
+    expel: () => layout?.expel(),
+    "consume-or-expel": ([side]) => {
+      if (side === "left" || side === "right") {
+        layout?.consumeOrExpel(side);
+      }
+    },
+    park: () => layout?.park(),
+    close: () => layout?.close(),
+    "settle-ms": ([ms]) => {
+      const value = Number(ms);
+      if (Number.isFinite(value) && value >= 0) {
+        settle = value;
+      }
+    },
+  };
+
+  $effect(() => {
+    let stop = () => {};
+    const hear = async (items: ReadableStream<readonly string[]>) => {
+      const reader = items.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          return;
+        }
+        const [name, ...args] = value;
+        const command = name === undefined ? undefined : commands[name];
+        if (command === undefined) {
+          console.error("[shell] unknown command", value);
+        } else {
+          command(args);
+        }
+      }
+    };
+    domicile.shell
+      .commands()
+      .then((listening) =>
+        listening.match({
+          Ok: ({ items, stop: end }) => {
+            stop = end;
+            hear(items).catch((error: unknown) => console.error("[shell] commands", error));
+          },
+          Err: (error) => console.error("[shell] commands", error),
+        }),
+      )
+      .catch((error: unknown) => console.error("[shell] commands", error));
+    return () => stop();
+  });
 </script>
 
 <!-- Not hidden under the lock screen, only covered: a hidden <app> reports no
@@ -138,7 +203,7 @@
     {#snippet center()}<WindowTitle />{/snippet}
     {#snippet right()}<Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
   </Bar>
-  <Scrolling bind:this={layout} />
+  <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}
     <!-- Opened again, it starts from an empty query. -->
     {#key launcher}
