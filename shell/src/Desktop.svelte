@@ -53,6 +53,8 @@
       })),
   };
 
+  let keymap = $state<ReturnType<typeof Keymap>>();
+
   let launcher = $state<{ sources: Source[]; placeholder: string }>();
   const openLauncher = (sources: Source[], placeholder: string) => {
     launcher = { sources, placeholder };
@@ -79,6 +81,7 @@
       apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
       openLauncher([windowList], "Windows");
     },
+    "Meta+space": () => keymap?.next(),
     "Meta+p": () => layout?.park(),
     // swaylock's key under niri.
     "Ctrl+Alt+Delete": () => domicile.session.lock(),
@@ -251,7 +254,7 @@
      unlock reaches a window not yet shown again. -->
 <div class="desktop">
   <Bar>
-    {#snippet left()}<Keymap />{/snippet}
+    {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
     {#snippet right()}<Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
   </Bar>
