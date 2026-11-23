@@ -121,8 +121,11 @@
   });
 
   // The active column in view, and the view filled where the strip allows, so
-  // a closed or narrowed column leaves no empty space behind.
-  $effect(() => {
+  // a closed or narrowed column leaves no empty space behind. A pre effect, so
+  // the scroll reaches the DOM in the same update as the boxes: a later update
+  // would settle from a start that already holds the new boxes, and the strip
+  // would jump.
+  $effect.pre(() => {
     const span = across[columnOf(columns, active)];
     const strip = across;
     const view = viewWidth;
