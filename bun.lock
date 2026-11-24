@@ -36,6 +36,8 @@
       "name": "@domicile-svelte/bar-extensions",
       "dependencies": {
         "@domicile-svelte/bar": "workspace:*",
+        "@domicile-svelte/extensions": "workspace:*",
+        "@domicile-svelte/menu": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
       },
       "peerDependencies": {
@@ -100,6 +102,16 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/extensions": {
+      "name": "@domicile-svelte/extensions",
+      "dependencies": {
+        "@domicile-svelte/menu": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/launcher": {
       "name": "@domicile-svelte/launcher",
       "dependencies": {
@@ -153,6 +165,8 @@
     "packages/windows": {
       "name": "@domicile-svelte/windows",
       "dependencies": {
+        "@domicile-svelte/extensions": "workspace:*",
+        "@domicile-svelte/menu": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
       },
       "peerDependencies": {
@@ -187,7 +201,7 @@
 
     "@domicile-desktop/react": ["@domicile-desktop/react@0.1.2", "", { "dependencies": { "@cprussin/option-result": "^2.0.1", "@domicile-desktop/sdk": "2.2.0" }, "peerDependencies": { "react": "^19.2.8", "react-dom": "^19.2.8" } }, "sha512-JVPm62ssY3xyju9VX7GMqebgW/ftv4eDztdbg1AkSBvm3GowJYrAqpzufvcsQLdpRycq37OMns2YGbIOAD14YQ=="],
 
-    "@domicile-desktop/sdk": ["@domicile-desktop/sdk@.fork-sdk/sdk.tgz", { "dependencies": { "@cprussin/option-result": "^2.0.1", "zod": "^4.6.7" } }, "sha512-uIPscoXKclBPj1fT3OzA4NyAqlJenDIZ1NNx8DVSeuFp6BQLq8vEOarTuYNAJEmIJ+aEqNT2cornd7RKiGNuqg=="],
+    "@domicile-desktop/sdk": ["@domicile-desktop/sdk@.fork-sdk/sdk.tgz", { "dependencies": { "@cprussin/option-result": "^2.0.1", "zod": "^4.6.7" } }, "sha512-JJhVg6W19fOgw4PltbZQ4YMp4bIKBvmc9FkDzEw8KQ3ctRBiaJmR4AAZmeyJkJNzGnwY7XcDRk2Ct1wYlcWuQg=="],
 
     "@domicile-desktop/system-apps": ["@domicile-desktop/system-apps@1.2.0", "", { "dependencies": { "@cprussin/option-result": "^2.0.1", "@domicile-desktop/sdk": "2.2.0", "zod": "^4.5.4" } }, "sha512-usy/vAcuExdDp1XjbBwThWJSlMKtQQjG2M4p43qRrJYTYt6XadVOo1ciXRMvgZGApwbAhzvfWZDi3moJtxdZ/g=="],
 
@@ -208,6 +222,8 @@
     "@domicile-svelte/bar-volume": ["@domicile-svelte/bar-volume@workspace:packages/bar-volume"],
 
     "@domicile-svelte/bar-window-title": ["@domicile-svelte/bar-window-title@workspace:packages/bar-window-title"],
+
+    "@domicile-svelte/extensions": ["@domicile-svelte/extensions@workspace:packages/extensions"],
 
     "@domicile-svelte/launcher": ["@domicile-svelte/launcher@workspace:packages/launcher"],
 

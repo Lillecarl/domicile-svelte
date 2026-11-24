@@ -5,26 +5,36 @@
 <script lang="ts">
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
   import {
+    WEBVIEW_CONTEXT_MENU_EVENT,
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
+  import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
+  import type { Entry } from "@domicile-svelte/menu";
+  import { useDomicile } from "@domicile-svelte/svelte";
   import { untrack } from "svelte";
 
   import { addressOf } from "./address";
+  import { pageMenu } from "./page-menu";
 
   const {
     window: browserWindow,
     onfocus,
     onfocusrequest,
+    onmenu,
   }: {
     window: BrowserWindow;
     /** The page or the address bar took focus. */
     onfocus: () => void;
     /** The page or an extension asked to be raised. */
     onfocusrequest: () => void;
+    /** A right click: draw this menu there, on the screen. */
+    onmenu: (entries: Entry[], x: number, y: number) => void;
   } = $props();
+
+  const { browser, extensions } = useDomicile();
 
   type Page = HTMLWebViewElement;
 
@@ -55,10 +65,30 @@
     // The page saw the chord first and let it through.
     view.addEventListener(WEBVIEW_GUEST_KEYDOWN_EVENT, (event) => {
       const binding = bindings[chordOf(event)];
+      const extension = binding === undefined && runsCommands(extensions) ? commandFor(extensions, event) : undefined;
       if (binding !== undefined) {
         event.preventDefault();
         binding();
+      } else if (extension !== undefined) {
+        event.preventDefault();
+        extensions.runCommand(extension.id, extension.command.name);
       }
+    });
+    view.addEventListener(WEBVIEW_CONTEXT_MENU_EVENT, (event) => {
+      const box = view.getBoundingClientRect();
+      const entries = pageMenu(
+        event,
+        {
+          canGoBack: view.canGoBack,
+          canGoForward: view.canGoForward,
+          back: () => view.goBack(),
+          forward: () => view.goForward(),
+          reload: () => view.reload(),
+          open: (url) => browser.open(url),
+        },
+        extensionItemsOf(event),
+      );
+      onmenu(entries, box.left + event.x, box.top + event.y);
     });
     frame.append(view);
     page = view;

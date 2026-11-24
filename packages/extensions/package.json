@@ -1,0 +1,9 @@
+{
+  "name": "@domicile-svelte/extensions",
+  "description": "Extensions' commands and menu items, for the bar's menu and browser windows.",
+  "type": "module",
+  "exports": { ".": { "default": "./src/index.ts" } },
+  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json", "test": "bun test" },
+  "dependencies": { "@domicile-svelte/menu": "workspace:*" },
+  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "svelte": "^5.59.1" }
+}

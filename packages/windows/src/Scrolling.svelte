@@ -25,6 +25,7 @@
 <script lang="ts">
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
   import { PreviewedWindow } from "@domicile-desktop/sdk/previewed-window";
+  import { type Entry, Menu } from "@domicile-svelte/menu";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
   import { MediaQuery, SvelteMap } from "svelte/reactivity";
@@ -471,6 +472,10 @@
     });
   });
 
+  // A page's context menu. Drawn out of its tile, whose transform and clip
+  // would place it.
+  let menu = $state.raw<{ entries: Entry[]; x: number; y: number }>();
+
   const floatBox = (page: Page) => {
     const w = Math.min(page.width || 480, viewWidth);
     const h = Math.min(page.height || 640, viewHeight);
@@ -525,11 +530,27 @@
           windows.focusShell();
         }}
         onfocusrequest={() => focus(key)}
+        onmenu={(entries, x, y) => (menu = { entries, x, y })}
       />
       {@render still(key)}
     </div>
   {/each}
 </div>
+
+{#if menu !== undefined}
+  {#key menu}
+    <Menu
+      entries={menu.entries}
+      x={menu.x}
+      y={menu.y}
+      label="Page"
+      onclose={() => {
+        menu = undefined;
+        refocus();
+      }}
+    />
+  {/key}
+{/if}
 
 <style>
   .view {

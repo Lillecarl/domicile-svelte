@@ -18,5 +18,8 @@ export const addressOf = (text: string): Address | undefined => {
   if (/^[^\s]+\.[^\s]+$/.test(trimmed)) {
     return { kind: "url", url: `https://${trimmed}` };
   }
-  return { kind: "search", url: `${SEARCH}${encodeURIComponent(trimmed)}`, words: trimmed };
+  return { kind: "search", url: searchUrl(trimmed), words: trimmed };
 };
+
+/** A web search for `words`. */
+export const searchUrl = (words: string): string => `${SEARCH}${encodeURIComponent(words)}`;
