@@ -2,6 +2,7 @@
   import { Err, Ok, type Result } from "@cprussin/option-result";
   import type { CommandRan, ShellCommand } from "@domicile-desktop/sdk/shell-command";
   import { Bar } from "@domicile-svelte/bar";
+  import Cast from "@domicile-svelte/bar-cast";
   import Clock from "@domicile-svelte/bar-clock";
   import Extensions from "@domicile-svelte/bar-extensions";
   import Keymap from "@domicile-svelte/bar-keymap";
@@ -62,6 +63,9 @@
   };
 
   let keymap = $state<ReturnType<typeof Keymap>>();
+  let cast = $state<ReturnType<typeof Cast>>();
+  // The TV could show a toast.
+  let isCasting = $state(false);
   let monitor = $state<ReturnType<typeof Monitor>>();
   let notifications = $state<ReturnType<typeof Notifications>>();
 
@@ -215,6 +219,11 @@
       description: "Open the notification history, or close it.",
       run: () => ran(() => notifications?.toggle()),
     },
+    cast: {
+      usage: "cast",
+      description: "Open the panel that casts to TVs, or close it.",
+      run: () => ran(() => cast?.toggle()),
+    },
     monitor: {
       usage: "monitor",
       description: "Open the system monitor, or close it.",
@@ -276,7 +285,7 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Capturing /><Monitor bind:this={monitor} onclose={() => layout?.refocus()} /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
+    {#snippet right()}<Capturing /><Monitor bind:this={monitor} onclose={() => layout?.refocus()} /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Cast bind:this={cast} oncasting={(casting) => (isCasting = casting)} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} quiet={isCasting} onclose={() => layout?.refocus()} /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}

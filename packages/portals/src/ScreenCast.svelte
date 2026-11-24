@@ -8,8 +8,18 @@
   import { untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
-  const { appId, body, answer }: { appId: string; body: ScreenCastBody; answer: (answer: PortalAnswer) => void } =
-    $props();
+  const {
+    appId,
+    to,
+    body,
+    answer,
+  }: {
+    appId: string;
+    /** The TV it goes to, when the shell asked. */
+    to?: string;
+    body: ScreenCastBody;
+    answer: (answer: PortalAnswer) => void;
+  } = $props();
 
   const { browser, windows } = useDomicile();
   // A new request gets a new component, so its body never changes here. The
@@ -103,7 +113,13 @@
 <div class="cover">
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div bind:this={dialog} class="cast" role="dialog" aria-label="Share your screen" tabindex="-1" onkeydown={keydown}>
-    <header><strong>Share your screen</strong> <span>{appId || "An application"} asks to see it</span></header>
+    <header>
+      {#if to === undefined}
+        <strong>Share your screen</strong> <span>{appId || "An application"} asks to see it</span>
+      {:else}
+        <strong>Cast to {to}</strong>
+      {/if}
+    </header>
     <ul>
       {#each offers as { icon, label, detail }, index (index)}
         <li>

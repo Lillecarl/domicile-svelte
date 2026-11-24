@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@domicile-svelte/bar": "workspace:*",
-    "@domicile-svelte/bar-clock": "workspace:*",
+    "@domicile-svelte/bar-cast": "workspace:*",
+    "@domicile-svelte/bar-clock":"workspace:*",
     "@domicile-svelte/bar-extensions": "workspace:*",
     "@domicile-svelte/bar-keymap": "workspace:*",
     "@domicile-svelte/bar-monitor": "workspace:*",

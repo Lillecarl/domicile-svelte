@@ -13,8 +13,11 @@
   import { arrivals, keyOf, toastMs, toasts, unread } from "./toasting";
 
   const {
+    quiet = false,
     onclose,
   }: {
+    /** No toasts now; what arrives is in the history. */
+    quiet?: boolean;
     /** The keyboard may have come to the shell: hand it back. */
     onclose?: () => void;
   } = $props();
@@ -42,7 +45,7 @@
     const fresh = arrivals(before, listed);
     before = listed;
     untrack(() => {
-      if (!locked.current && !open) {
+      if (!locked.current && !open && !quiet) {
         up = [...up, ...fresh.filter((each) => toasts(each, paused)).map(keyOf)];
       }
     });

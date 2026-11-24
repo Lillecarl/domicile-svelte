@@ -5,9 +5,11 @@
   an answer that never comes. It also fires the chords applications hold.
 -->
 <script lang="ts">
+  import { type CastClaim, CastClaimKind, claimCastRequest } from "@domicile-desktop/sdk/cast";
   import { fireGlobalShortcuts } from "@domicile-desktop/sdk/global-shortcuts";
   import { PortalAnswer, PortalKind, type PortalRequest } from "@domicile-desktop/sdk/portal";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
+  import { untrack } from "svelte";
 
   import Agent from "./Agent.svelte";
   import AppChooser from "./AppChooser.svelte";
@@ -40,9 +42,30 @@
   $effect(() => fireGlobalShortcuts(domicile));
 
   const CAPTURES = [PortalKind.ScreenCast, PortalKind.Screenshot, PortalKind.PickColor];
+  // What a cast to a TV makes of each request: one it answers shows nothing.
+  // Before the dialog is drawn, and once a request, as a claim uses itself up.
+  let claims = $state.raw<ReadonlyMap<number, CastClaim | undefined>>(new Map());
+  $effect.pre(() => {
+    const known = untrack(() => claims);
+    const next = new Map<number, CastClaim | undefined>();
+    for (const request of requests.current) {
+      const claim = known.has(request.id) ? known.get(request.id) : claimCastRequest(domicile, request);
+      next.set(request.id, claim);
+      if (!known.has(request.id) && claim?.kind === CastClaimKind.Answered) {
+        portals.answer(request.id, claim.answer);
+      }
+    }
+    claims = next;
+  });
+
   // An inhibitor is no question, and the compositor refuses answers to it.
   const asked = $derived(
-    requests.current.filter(({ kind }) => kind !== PortalKind.Inhibit && kind !== PortalKind.Unknown),
+    requests.current.filter(
+      ({ id, kind }) =>
+        kind !== PortalKind.Inhibit &&
+        kind !== PortalKind.Unknown &&
+        claims.get(id)?.kind !== CastClaimKind.Answered,
+    ),
   );
   const shown = $derived<PortalRequest | undefined>(asked.find(({ kind }) => CAPTURES.includes(kind)) ?? asked[0]);
 
@@ -72,7 +95,13 @@
     {#if shown.kind === PortalKind.FileChooser}
       <FileChooser body={shown.body} {answer} />
     {:else if shown.kind === PortalKind.ScreenCast}
-      <ScreenCast {appId} body={shown.body} {answer} />
+      {@const claim = claims.get(id)}
+      <ScreenCast
+        {appId}
+        to={claim?.kind === CastClaimKind.Pick ? claim.to : undefined}
+        body={shown.body}
+        {answer}
+      />
     {:else if shown.kind === PortalKind.AppChooser}
       <AppChooser body={shown.body} {icon} {answer} />
     {:else if shown.kind === PortalKind.DynamicLauncher}
