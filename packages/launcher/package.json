@@ -2,11 +2,22 @@
   "name": "@domicile-svelte/launcher",
   "description": "A launcher: one search over sources such as installed apps, windows and the web.",
   "type": "module",
-  "exports": { ".": { "svelte": "./src/index.ts", "default": "./src/index.ts" } },
-  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json", "test": "bun test" },
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "bun test"
+  },
   "dependencies": {
     "@domicile-desktop/system-apps": "1.2.0",
     "@domicile-svelte/svelte": "workspace:*"
   },
-  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "svelte": "^5.59.1" }
+  "peerDependencies": {
+    "@domicile-desktop/sdk": "^2.2.0",
+    "svelte": "^5.59.1"
+  }
 }

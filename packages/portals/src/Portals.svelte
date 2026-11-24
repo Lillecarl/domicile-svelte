@@ -62,9 +62,7 @@
   const asked = $derived(
     requests.current.filter(
       ({ id, kind }) =>
-        kind !== PortalKind.Inhibit &&
-        kind !== PortalKind.Unknown &&
-        claims.get(id)?.kind !== CastClaimKind.Answered,
+        kind !== PortalKind.Inhibit && kind !== PortalKind.Unknown && claims.get(id)?.kind !== CastClaimKind.Answered,
     ),
   );
   const shown = $derived<PortalRequest | undefined>(asked.find(({ kind }) => CAPTURES.includes(kind)) ?? asked[0]);
@@ -96,12 +94,7 @@
       <FileChooser body={shown.body} {answer} />
     {:else if shown.kind === PortalKind.ScreenCast}
       {@const claim = claims.get(id)}
-      <ScreenCast
-        {appId}
-        to={claim?.kind === CastClaimKind.Pick ? claim.to : undefined}
-        body={shown.body}
-        {answer}
-      />
+      <ScreenCast {appId} to={claim?.kind === CastClaimKind.Pick ? claim.to : undefined} body={shown.body} {answer} />
     {:else if shown.kind === PortalKind.AppChooser}
       <AppChooser body={shown.body} {icon} {answer} />
     {:else if shown.kind === PortalKind.DynamicLauncher}

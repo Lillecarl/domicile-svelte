@@ -29,8 +29,7 @@ export const holdAwake = (dbus: Pick<Dbus, "call">, reason: string): (() => void
         result.match<Promise<unknown>>({
           // Never held, so there is nothing to let go.
           Err: () => Promise.resolve(),
-          Ok: (path) =>
-            dbus.call({ ...PORTAL, path, interface: "org.freedesktop.portal.Request", member: "Close" }),
+          Ok: (path) => dbus.call({ ...PORTAL, path, interface: "org.freedesktop.portal.Request", member: "Close" }),
         }),
       )
       .catch(failed);

@@ -53,20 +53,26 @@
   const own = (id: string): Entry[] => {
     const options = extensions.installed?.find((each) => each.id === id)?.optionsUrl;
     return [
-      ...commandsOf(extensions, id).map(
-        ({ name, description, keys }): Entry => ({
-          kind: "item",
-          key: `command:${name}`,
-          label: description || (name === "_execute_action" ? "Open" : name),
-          enabled: true,
-          hint: keys?.label,
-          run: () => extensions.runCommand(id, name),
-        }),
-      ),
+      ...commandsOf(extensions, id).map(({ name, description, keys }): Entry => ({
+        kind: "item",
+        key: `command:${name}`,
+        label: description || (name === "_execute_action" ? "Open" : name),
+        enabled: true,
+        hint: keys?.label,
+        run: () => extensions.runCommand(id, name),
+      })),
       { kind: "separator", key: "items" },
       ...(options === undefined
         ? []
-        : [{ kind: "item" as const, key: "options", label: "Options", enabled: true, run: () => browser.open(options) }]),
+        : [
+            {
+              kind: "item" as const,
+              key: "options",
+              label: "Options",
+              enabled: true,
+              run: () => browser.open(options),
+            },
+          ]),
     ];
   };
 
@@ -116,7 +122,14 @@
 
 {#if menu !== undefined}
   {#key menu}
-    <Menu entries={menu.entries} x={menu.x} y={menu.y} label={menu.title} trigger={anchors[menu.id]} onclose={closeMenu} />
+    <Menu
+      entries={menu.entries}
+      x={menu.x}
+      y={menu.y}
+      label={menu.title}
+      trigger={anchors[menu.id]}
+      onclose={closeMenu}
+    />
   {/key}
 {/if}
 

@@ -257,7 +257,9 @@
         }
         domicile.shell
           .answer(value.sent, runCommand(value.words))
-          .then((answered) => answered.match({ Ok: () => undefined, Err: (error) => console.error("[shell] answer", error) }))
+          .then((answered) =>
+            answered.match({ Ok: () => undefined, Err: (error) => console.error("[shell] answer", error) }),
+          )
           .catch((error: unknown) => console.error("[shell] answer", error));
       }
     };
@@ -285,7 +287,16 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Capturing /><Monitor bind:this={monitor} onclose={() => layout?.refocus()} /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Cast bind:this={cast} oncasting={(casting) => (isCasting = casting)} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} quiet={isCasting} onclose={() => layout?.refocus()} /><Clock />{/snippet}
+    {#snippet right()}
+      <Capturing />
+      <Monitor bind:this={monitor} onclose={() => layout?.refocus()} />
+      <Volume />
+      <Extensions onclose={() => layout?.refocus()} />
+      <Tray icon={apps.icon} onclose={() => layout?.refocus()} />
+      <Cast bind:this={cast} oncasting={(casting) => (isCasting = casting)} onclose={() => layout?.refocus()} />
+      <Notifications bind:this={notifications} quiet={isCasting} onclose={() => layout?.refocus()} />
+      <Clock />
+    {/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}

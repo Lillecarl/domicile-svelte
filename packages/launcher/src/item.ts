@@ -28,5 +28,7 @@ export const matching = <T>(items: readonly T[], query: string, texts: (item: T)
     .map((lowered, index) => ({ index, lowered }))
     .filter(({ lowered }) => words.every((word) => lowered.some((text) => text.includes(word))));
   const first = (lowered: readonly string[]) => Number(!(lowered[0] ?? "").startsWith(start));
-  return found.sort((a, b) => first(a.lowered) - first(b.lowered) || a.index - b.index).map(({ index }) => items[index] as T);
+  return found
+    .sort((a, b) => first(a.lowered) - first(b.lowered) || a.index - b.index)
+    .map(({ index }) => items[index] as T);
 };

@@ -23,7 +23,12 @@
   // The PDF is last, and is no CUPS queue even when one has its name.
   const printers: readonly Printer[] = [...asked.printers, asked.pdf];
 
-  let at = $state(Math.max(0, asked.printers.findIndex(({ name }) => name === asked.printer)));
+  let at = $state(
+    Math.max(
+      0,
+      asked.printers.findIndex(({ name }) => name === asked.printer),
+    ),
+  );
   const printer = $derived(printers[at] ?? asked.pdf);
   const toPdf = $derived(at === printers.length - 1);
   let options = $state<PrintOptions>({ ...(printers[untrack(() => at)] ?? asked.pdf).initial });
@@ -45,7 +50,13 @@
   const words = (name: string) => name.replace(/(?!^)([A-Z])/g, " $1").toLowerCase();
 </script>
 
-{#snippet choice<T extends number>(label: string, offered: readonly T[], names: Record<number, string>, value: T | undefined, set: (value: T) => void)}
+{#snippet choice<T extends number>(
+  label: string,
+  offered: readonly T[],
+  names: Record<number, string>,
+  value: T | undefined,
+  set: (value: T) => void,
+)}
   {#if offered.length > 0}
     <label>
       {label}
@@ -124,7 +135,13 @@
     {/if}
     {@render choice("Color", printer.colorModes, ColorMode, options.colorMode, (value) => (options.colorMode = value))}
     {@render choice("Sides", printer.sides, Sides, options.sides, (value) => (options.sides = value))}
-    {@render choice("Orientation", printer.orientations, Orientation, options.orientation, (value) => (options.orientation = value))}
+    {@render choice(
+      "Orientation",
+      printer.orientations,
+      Orientation,
+      options.orientation,
+      (value) => (options.orientation = value),
+    )}
     {@render choice("Quality", printer.qualities, PrintQuality, options.quality, (value) => (options.quality = value))}
   </Frame>
 {/if}

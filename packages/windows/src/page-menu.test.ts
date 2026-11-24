@@ -41,7 +41,13 @@ test("a page has its own history and Inspect", () => {
 
 test("a link and a picture have their own commands, and no history", () => {
   const menu = pageMenu(
-    { ...click, linkUrl: "https://a.example/", mediaType: "image", hasImageContents: true, srcUrl: "https://a.example/p" },
+    {
+      ...click,
+      linkUrl: "https://a.example/",
+      mediaType: "image",
+      hasImageContents: true,
+      srcUrl: "https://a.example/p",
+    },
     page,
     [],
   );

@@ -14,7 +14,9 @@ const scaled = (value: number, step: number, names: readonly string[]): string =
 const BYTES = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
 const few = (value: number): string =>
-  Math.abs(value) >= 10_000 ? scaled(value, 1000, ["", "k", "M", "G"]) : String(Number(value.toFixed(Math.abs(value) < 10 ? 2 : 0)));
+  Math.abs(value) >= 10_000
+    ? scaled(value, 1000, ["", "k", "M", "G"])
+    : String(Number(value.toFixed(Math.abs(value) < 10 ? 2 : 0)));
 
 export const format = (value: number, unit: Unit): string => {
   switch (unit) {

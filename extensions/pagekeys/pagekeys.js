@@ -20,7 +20,18 @@
   const HINT_CHARS = "sadjklewcmpgh";
   const STEP = 60;
 
-  const NOT_TEXT = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+  const NOT_TEXT = new Set([
+    "button",
+    "checkbox",
+    "color",
+    "file",
+    "hidden",
+    "image",
+    "radio",
+    "range",
+    "reset",
+    "submit",
+  ]);
   const ROLES = new Set([
     "button",
     "checkbox",
@@ -189,7 +200,7 @@
     const codes = [0];
     let next = 1;
     let shift = 0;
-    for (let offset = 0; offset < expand; ) {
+    for (let offset = 0; offset < expand;) {
       if (next === offset) {
         next = next * step + 1;
         shift += bits;

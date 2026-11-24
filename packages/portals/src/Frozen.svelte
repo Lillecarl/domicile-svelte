@@ -163,7 +163,9 @@
     border-radius: 10px;
     background: #1e1e2e;
     color: #cdd6f4;
-    font: 14px "Hack Nerd Font", monospace;
+    font:
+      14px "Hack Nerd Font",
+      monospace;
     cursor: default;
   }
 

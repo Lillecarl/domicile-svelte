@@ -27,7 +27,9 @@
     box-sizing: border-box;
     background: var(--bar-base);
     color: var(--bar-text);
-    font: 14px "Hack Nerd Font", monospace;
+    font:
+      14px "Hack Nerd Font",
+      monospace;
     user-select: none;
   }
 

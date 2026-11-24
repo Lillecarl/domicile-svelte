@@ -205,7 +205,9 @@
     border-radius: 6px;
     background: #313244;
     color: #cdd6f4;
-    font: 13px "Hack Nerd Font", monospace;
+    font:
+      13px "Hack Nerd Font",
+      monospace;
   }
 
   .page {

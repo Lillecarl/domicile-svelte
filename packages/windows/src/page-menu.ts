@@ -65,15 +65,13 @@ export const pageMenu = (click: Click, page: PageActions, extensions: readonly E
       : [
           ...(click.spellingSuggestions.length === 0
             ? [item("No spelling suggestions", () => undefined, false)]
-            : click.spellingSuggestions.map(
-                (word): Entry => ({
-                  kind: "item",
-                  key: `spelling:${word}`,
-                  label: word,
-                  enabled: true,
-                  run: () => click.replaceMisspelling(word),
-                }),
-              )),
+            : click.spellingSuggestions.map((word): Entry => ({
+                kind: "item",
+                key: `spelling:${word}`,
+                label: word,
+                enabled: true,
+                run: () => click.replaceMisspelling(word),
+              }))),
           does("Add to dictionary", "add-to-dictionary"),
         ],
     overLink
@@ -92,9 +90,7 @@ export const pageMenu = (click: Click, page: PageActions, extensions: readonly E
         ? [does(click.inPictureInPicture ? "Exit picture in picture" : "Picture in picture", "picture-in-picture")]
         : []),
     ],
-    click.isEditable
-      ? [does("Undo", "undo", click.canUndo), does("Redo", "redo", click.canRedo)]
-      : [],
+    click.isEditable ? [does("Undo", "undo", click.canUndo), does("Redo", "redo", click.canRedo)] : [],
     click.isEditable
       ? [
           does("Cut", "cut", click.canCut),
@@ -120,5 +116,7 @@ export const pageMenu = (click: Click, page: PageActions, extensions: readonly E
   ];
   return groups
     .filter((group) => group.length > 0)
-    .flatMap((group, index): Entry[] => (index === 0 ? group : [{ kind: "separator", key: `group:${index}` }, ...group]));
+    .flatMap((group, index): Entry[] =>
+      index === 0 ? group : [{ kind: "separator", key: `group:${index}` }, ...group],
+    );
 };

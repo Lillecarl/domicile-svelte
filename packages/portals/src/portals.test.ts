@@ -55,5 +55,10 @@ test("page ranges read and write", () => {
     { first: 5, last: 5 },
   ]);
   expect(["0", "3-1", "x", "1,"].map(pageRanges)).toEqual([undefined, undefined, undefined, undefined]);
-  expect(pagesText([{ first: 1, last: 3 }, { first: 5, last: 5 }])).toBe("1-3, 5");
+  expect(
+    pagesText([
+      { first: 1, last: 3 },
+      { first: 5, last: 5 },
+    ]),
+  ).toBe("1-3, 5");
 });

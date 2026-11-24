@@ -7,7 +7,9 @@
 
 <div class="meter" title="{label}: {text}">
   <span class="label">{label}</span>
-  <span class="bar"><span class="fill" class:warm={share >= 75} class:hot={share >= 90} style:width="{share}%"></span></span>
+  <span class="bar">
+    <span class="fill" class:warm={share >= 75} class:hot={share >= 90} style:width="{share}%"></span>
+  </span>
   <span class="text">{text}</span>
 </div>
 

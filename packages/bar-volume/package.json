@@ -2,8 +2,22 @@
   "name": "@domicile-svelte/bar-volume",
   "description": "The default output and input volume. Scroll to change it, click to mute, right-click for a mixer.",
   "type": "module",
-  "exports": { ".": { "svelte": "./src/Volume.svelte", "default": "./src/Volume.svelte" } },
-  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json" },
-  "dependencies": { "@domicile-svelte/bar": "workspace:*", "@domicile-svelte/svelte": "workspace:*" },
-  "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "@domicile-desktop/system-audio": "^1.1.2", "svelte": "^5.59.1" }
+  "exports": {
+    ".": {
+      "svelte": "./src/Volume.svelte",
+      "default": "./src/Volume.svelte"
+    }
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@domicile-svelte/bar": "workspace:*",
+    "@domicile-svelte/svelte": "workspace:*"
+  },
+  "peerDependencies": {
+    "@domicile-desktop/sdk": "^2.2.0",
+    "@domicile-desktop/system-audio": "^1.1.2",
+    "svelte": "^5.59.1"
+  }
 }

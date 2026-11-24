@@ -90,7 +90,12 @@
 <header>
   <span class="facts">{facts.join(" · ")}</span>
   {#each SPANS as { label, seconds } (seconds)}
-    <button type="button" class:chosen={span === seconds} aria-pressed={span === seconds} onclick={() => (span = seconds)}>
+    <button
+      type="button"
+      class:chosen={span === seconds}
+      aria-pressed={span === seconds}
+      onclick={() => (span = seconds)}
+    >
       {label}
     </button>
   {/each}

@@ -94,7 +94,9 @@
 >
   <div class="top">
     {#if notification.clickable}
-      <button type="button" class="content" onclick={() => press(DEFAULT_NOTIFICATION_ACTION)}>{@render words()}</button>
+      <button type="button" class="content" onclick={() => press(DEFAULT_NOTIFICATION_ACTION)}>
+        {@render words()}
+      </button>
     {:else}
       <div class="content">{@render words()}</div>
     {/if}
@@ -135,7 +137,9 @@
     border-radius: 8px;
     background: #1e1e2e;
     color: #cdd6f4;
-    font: 13px "Hack Nerd Font", monospace;
+    font:
+      13px "Hack Nerd Font",
+      monospace;
   }
 
   article.critical {

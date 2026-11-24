@@ -301,8 +301,7 @@
     rearrange((now, key) => columnMoved(now, key, to));
 
   /** Move the active window up or down in its column. */
-  export const moveWindow = (direction: "up" | "down") =>
-    rearrange((now, key) => windowMoved(now, key, direction));
+  export const moveWindow = (direction: "up" | "down") => rearrange((now, key) => windowMoved(now, key, direction));
 
   /** Maximize the active window's column, or give it back its width. */
   export const maximize = () => rearrange(toggleFull);
@@ -414,7 +413,11 @@
     if (still === undefined || image === undefined || image === null || image.getAnimations().length > 0) {
       return;
     }
-    const fading = image.animate([{ opacity: 1 }, { opacity: 0 }], { duration: settle, easing: SETTLE_CURVE, fill: "forwards" });
+    const fading = image.animate([{ opacity: 1 }, { opacity: 0 }], {
+      duration: settle,
+      easing: SETTLE_CURVE,
+      fill: "forwards",
+    });
     fading.onfinish = () => {
       if (stills.get(key) === still) {
         stills.delete(key);
@@ -464,10 +467,10 @@
         if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5 && Math.abs(scaleX - 1) < 0.001 && Math.abs(scaleY - 1) < 0.001) {
           continue;
         }
-        tile.animate(
-          [{ transform: `translate(${x}px, ${y}px) scale(${scaleX}, ${scaleY})` }, { transform: "none" }],
-          { duration: settle, easing: SETTLE_CURVE },
-        );
+        tile.animate([{ transform: `translate(${x}px, ${y}px) scale(${scaleX}, ${scaleY})` }, { transform: "none" }], {
+          duration: settle,
+          easing: SETTLE_CURVE,
+        });
       }
     });
   });

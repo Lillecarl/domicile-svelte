@@ -39,7 +39,10 @@ export class History {
   /** The first index within `seconds` of the last sample. */
   since(seconds: number): number {
     const last = this.times.at(-1) ?? 0;
-    return Math.max(0, this.times.findIndex((each) => last - each <= seconds));
+    return Math.max(
+      0,
+      this.times.findIndex((each) => last - each <= seconds),
+    );
   }
 
   private row(time: number, sample: Sample): void {

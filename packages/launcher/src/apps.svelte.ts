@@ -83,8 +83,7 @@ export const installedSource = (domicile: Domicile): InstalledSource => {
     return icons[name] ?? undefined;
   };
 
-  const appIcon = (id: string) =>
-    icon(entries.find((entry) => entry.id === id || entry.id === `${id}.desktop`)?.icon);
+  const appIcon = (id: string) => icon(entries.find((entry) => entry.id === id || entry.id === `${id}.desktop`)?.icon);
 
   const item = (entry: DesktopEntry): Item => ({
     key: `app:${entry.id}`,

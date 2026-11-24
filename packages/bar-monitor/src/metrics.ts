@@ -1,5 +1,6 @@
 /** How a chart's values read. */
-export type Unit = "percent" | "bytes" | "bytes/s" | "hertz" | "celsius" | "rpm" | "volts" | "amps" | "watts" | "/s" | "count";
+export type Unit =
+  "percent" | "bytes" | "bytes/s" | "hertz" | "celsius" | "rpm" | "volts" | "amps" | "watts" | "/s" | "count";
 
 export type Chart = {
   id: string;
@@ -157,10 +158,12 @@ export const count = (files: Files): Counts => {
       .filter((each): each is { found: RegExpExecArray; text: string } => each.found !== null)
       .sort((one, other) => numerically(one.found[0], other.found[0]));
 
-  const stat = new Map(lines("/proc/stat").map((line) => {
-    const [key = "", ...rest] = line.split(/\s+/);
-    return [key, rest.map(Number)];
-  }));
+  const stat = new Map(
+    lines("/proc/stat").map((line) => {
+      const [key = "", ...rest] = line.split(/\s+/);
+      return [key, rest.map(Number)];
+    }),
+  );
   const cores = [...stat].filter(([key]) => /^cpu\d+$/.test(key));
   // In hundredths of a second, so a second's worth is percent already.
   const share = (perSecond: number) => Math.min(100, perSecond / Math.max(1, cores.length));
@@ -193,10 +196,12 @@ export const count = (files: Files): Counts => {
   gauge(LOAD, "15 min", fifteen);
   gauge(TASKS, "threads", threads);
 
-  const memory = new Map(lines("/proc/meminfo").map((line) => {
-    const [key = "", value] = line.split(":");
-    return [key, Number.parseInt(value ?? "", 10) * 1024];
-  }));
+  const memory = new Map(
+    lines("/proc/meminfo").map((line) => {
+      const [key = "", value] = line.split(":");
+      return [key, Number.parseInt(value ?? "", 10) * 1024];
+    }),
+  );
   if (memory.has("MemTotal")) {
     const of = (key: string) => memory.get(key) ?? 0;
     const total = of("MemTotal");

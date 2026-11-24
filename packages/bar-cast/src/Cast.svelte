@@ -210,7 +210,9 @@
     border-radius: 10px;
     background: #181825;
     color: #cdd6f4;
-    font: 13px "Hack Nerd Font", monospace;
+    font:
+      13px "Hack Nerd Font",
+      monospace;
     white-space: normal;
     box-sizing: border-box;
     overflow-y: auto;

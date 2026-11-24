@@ -22,7 +22,9 @@
 {#if onclick === undefined && oncontextmenu === undefined && onwheel === undefined}
   <span class="item" {title}>{@render children()}</span>
 {:else}
-  <button class="item" type="button" {title} {onclick} {onauxclick} {oncontextmenu} {onwheel}>{@render children()}</button>
+  <button class="item" type="button" {title} {onclick} {onauxclick} {oncontextmenu} {onwheel}>
+    {@render children()}
+  </button>
 {/if}
 
 <style>

@@ -74,7 +74,8 @@
             all.map(async ({ name, fileType }) => ({
               name,
               folder:
-                fileType === FileType.Directory || (fileType === FileType.Symlink && (await isFolder(joined(path, name)))),
+                fileType === FileType.Directory ||
+                (fileType === FileType.Symlink && (await isFolder(joined(path, name)))),
             })),
           ),
       });
@@ -277,7 +278,10 @@
               onchange={(event) => choices.set(choice.id, String(event.currentTarget.checked))}
             />
           {:else}
-            <select value={choices.get(choice.id)} onchange={(event) => choices.set(choice.id, event.currentTarget.value)}>
+            <select
+              value={choices.get(choice.id)}
+              onchange={(event) => choices.set(choice.id, event.currentTarget.value)}
+            >
               {#each choice.options as option (option.id)}<option value={option.id}>{option.label}</option>{/each}
             </select>
           {/if}
@@ -315,7 +319,9 @@
     box-shadow: 0 12px 48px #000c;
     overflow: hidden;
     outline: none;
-    font: 14px "Hack Nerd Font", monospace;
+    font:
+      14px "Hack Nerd Font",
+      monospace;
     color: #cdd6f4;
   }
 

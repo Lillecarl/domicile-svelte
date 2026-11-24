@@ -150,7 +150,11 @@
 
 <span class="monitor" bind:this={item}>
   <BarItem title="System monitor" onclick={toggle}>
-    <span class="temperature" class:warm={celsius !== undefined && celsius >= warm} class:hot={celsius !== undefined && celsius >= hot}>
+    <span
+      class="temperature"
+      class:warm={celsius !== undefined && celsius >= warm}
+      class:hot={celsius !== undefined && celsius >= hot}
+    >
       {celsius === undefined ? "\u{f0379}" : `${celsius}°C`}
     </span>
   </BarItem>
@@ -201,7 +205,9 @@
     border-radius: 10px;
     background: #181825;
     color: #cdd6f4;
-    font: 13px "Hack Nerd Font", monospace;
+    font:
+      13px "Hack Nerd Font",
+      monospace;
     white-space: normal;
     box-sizing: border-box;
     overflow-y: auto;

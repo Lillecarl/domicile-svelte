@@ -167,7 +167,9 @@
     box-shadow: 0 12px 48px #000c;
     overflow: hidden;
     outline: none;
-    font: 14px "Hack Nerd Font", monospace;
+    font:
+      14px "Hack Nerd Font",
+      monospace;
     color: #cdd6f4;
   }
 

@@ -27,7 +27,12 @@ export const columnOf = (columns: Columns, id: string | undefined): number =>
  * window in `open` added as a column of its own, `width` wide, right after the
  * one holding `focused` (at the end when nothing is focused).
  */
-export const sync = (columns: Columns, open: readonly string[], focused: string | undefined, width: number): Columns => {
+export const sync = (
+  columns: Columns,
+  open: readonly string[],
+  focused: string | undefined,
+  width: number,
+): Columns => {
   const kept = columns
     .map((column) => ({ ...column, windows: column.windows.filter((id) => open.includes(id)) }))
     .filter((column) => column.windows.length > 0);

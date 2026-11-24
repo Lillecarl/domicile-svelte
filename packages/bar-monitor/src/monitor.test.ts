@@ -60,26 +60,36 @@ test("gauges are read as they are, and an unconnected sensor is left out", () =>
 });
 
 test("the CPU's sensor is found by its driver", () => {
-  const files = (name: string) => parseFiles(`/sys/class/hwmon/hwmon3/name:${name}\n/sys/class/hwmon/hwmon3/temp1_input:71250`);
+  const files = (name: string) =>
+    parseFiles(`/sys/class/hwmon/hwmon3/name:${name}\n/sys/class/hwmon/hwmon3/temp1_input:71250`);
   expect(cpuTemperature(files("k10temp"))).toBe(71);
   expect(cpuTemperature(files("nvme"))).toBeUndefined();
 });
 
 test("a filesystem mounted twice is listed once", () => {
-  expect(parseFilesystems("Filesystem Used 1B-blocks Mounted on\n/dev/a 5 10 /\n/dev/a 5 10 /home\n/dev/b 1 2 /my disk\n")).toEqual([
+  expect(
+    parseFilesystems("Filesystem Used 1B-blocks Mounted on\n/dev/a 5 10 /\n/dev/a 5 10 /home\n/dev/b 1 2 /my disk\n"),
+  ).toEqual([
     { source: "/dev/a", used: 5, size: 10, target: "/" },
     { source: "/dev/b", used: 1, size: 2, target: "/my disk" },
   ]);
 });
 
 const one = (value: number, series = "a"): Sample =>
-  new Map([["x", { chart: { id: "x", section: "CPU", title: "x", unit: "count" }, values: new Map([[series, value]]) }]]);
+  new Map([
+    ["x", { chart: { id: "x", section: "CPU", title: "x", unit: "count" }, values: new Map([[series, value]]) }],
+  ]);
 
 test("history keeps columns as long as the times, breaks at gaps and forgets", () => {
   const history = new History(10, 5);
   history.push(1, one(0));
   history.push(3, one(2, "b"));
-  expect(history.tracks.get("x")?.columns).toEqual(new Map([["a", [0, null]], ["b", [null, 2]]]));
+  expect(history.tracks.get("x")?.columns).toEqual(
+    new Map([
+      ["a", [0, null]],
+      ["b", [null, 2]],
+    ]),
+  );
   expect(history.tracks.get("x")?.active).toEqual(new Set(["b"]));
   history.push(30, one(4));
   expect(history.times).toEqual([30]);
@@ -93,7 +103,15 @@ test("history keeps columns as long as the times, breaks at gaps and forgets", (
 });
 
 test("stacked columns add up", () => {
-  expect(stack([[1, null], [2, 3]])).toEqual([[1, null], [3, 3]]);
+  expect(
+    stack([
+      [1, null],
+      [2, 3],
+    ]),
+  ).toEqual([
+    [1, null],
+    [3, 3],
+  ]);
 });
 
 test("values read in their unit", () => {

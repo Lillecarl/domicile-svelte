@@ -17,7 +17,9 @@
 
   // The choices may change while this is up.
   const sorted = $derived(
-    body.choices.toSorted((a, b) => Number(b === body.lastChoice) - Number(a === body.lastChoice) || a.localeCompare(b)),
+    body.choices.toSorted(
+      (a, b) => Number(b === body.lastChoice) - Number(a === body.lastChoice) || a.localeCompare(b),
+    ),
   );
   let query = $state("");
   let wanted = $state<string>();
@@ -38,7 +40,9 @@
     {#each shown as id (id)}
       <li>
         <button type="button" class:chosen={id === chosen} onclick={() => (wanted = id)}>
-          <span class="icon">{#if icon(id) !== undefined}<img src={icon(id)} alt="" />{/if}</span>
+          <span class="icon">
+            {#if icon(id) !== undefined}<img src={icon(id)} alt="" />{/if}
+          </span>
           {id}
         </button>
       </li>

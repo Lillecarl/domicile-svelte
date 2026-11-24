@@ -2,8 +2,20 @@
   "name": "@domicile-svelte/bar-clock",
   "description": "The date and time, every second.",
   "type": "module",
-  "exports": { ".": { "svelte": "./src/Clock.svelte", "default": "./src/Clock.svelte" } },
-  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json" },
-  "dependencies": { "@domicile-svelte/bar": "workspace:*", "@domicile-svelte/svelte": "workspace:*" },
-  "peerDependencies": { "svelte": "^5.59.1" }
+  "exports": {
+    ".": {
+      "svelte": "./src/Clock.svelte",
+      "default": "./src/Clock.svelte"
+    }
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@domicile-svelte/bar": "workspace:*",
+    "@domicile-svelte/svelte": "workspace:*"
+  },
+  "peerDependencies": {
+    "svelte": "^5.59.1"
+  }
 }

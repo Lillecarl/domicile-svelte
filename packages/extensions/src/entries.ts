@@ -26,6 +26,4 @@ export const entriesOf = (menu: readonly AppMenuEntry[], run: (id: number) => vo
 
 /** The items extensions add to a page's menu. None on an engine that has no such items. */
 export const extensionItemsOf = (event: DomicileContextMenuEvent): Entry[] =>
-  "extensionItems" in event
-    ? entriesOf(appMenu(event.extensionItems), (id) => event.runExtensionItem(id))
-    : [];
+  "extensionItems" in event ? entriesOf(appMenu(event.extensionItems), (id) => event.runExtensionItem(id)) : [];

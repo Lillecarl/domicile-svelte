@@ -20,8 +20,20 @@
   } = $props();
 
   const COLORS = [
-    "#89b4fa", "#a6e3a1", "#f9e2af", "#f38ba8", "#cba6f7", "#94e2d5", "#fab387",
-    "#74c7ec", "#f5c2e7", "#b4befe", "#eba0ac", "#89dceb", "#f5e0dc", "#f2cdcd",
+    "#89b4fa",
+    "#a6e3a1",
+    "#f9e2af",
+    "#f38ba8",
+    "#cba6f7",
+    "#94e2d5",
+    "#fab387",
+    "#74c7ec",
+    "#f5c2e7",
+    "#b4befe",
+    "#eba0ac",
+    "#89dceb",
+    "#f5e0dc",
+    "#f2cdcd",
   ];
   const HEIGHT = 150;
   // The steps of a bytes axis.
@@ -64,7 +76,14 @@
       },
       axes: [
         { ...axis, font, size: 24, space: 70, values: "{HH}:{mm}:{ss}" },
-        { ...axis, font, size: 72, space: 28, ...(unit.startsWith("bytes") ? { incrs: POWERS } : {}), values:(_plot, splits) => splits.map((value) => format(value, unit)) },
+        {
+          ...axis,
+          font,
+          size: 72,
+          space: 28,
+          ...(unit.startsWith("bytes") ? { incrs: POWERS } : {}),
+          values: (_plot, splits) => splits.map((value) => format(value, unit)),
+        },
       ],
       series: [
         { label: "time", value: "{HH}:{mm}:{ss}" },

@@ -20,7 +20,8 @@
   accept="Allow"
   danger
   disabled={!desk && windows.length === 0}
-  onaccept={() => answer(desk ? PortalAnswer.Agent({ kind: "desk" }, remember) : PortalAnswer.Agent({ kind: "windows", windows }))}
+  onaccept={() =>
+    answer(desk ? PortalAnswer.Agent({ kind: "desk" }, remember) : PortalAnswer.Agent({ kind: "windows", windows }))}
   oncancel={() => answer(PortalAnswer.Canceled())}
 >
   <p class="note">The agent names itself; nothing checks it.</p>
