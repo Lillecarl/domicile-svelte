@@ -59,6 +59,23 @@ test("gauges are read as they are, and an unconnected sensor is left out", () =>
   expect(sample.get("memory")?.chart.max).toBe(100 * 1024);
 });
 
+test("drives share a chart, each by its device and model", () => {
+  const drive = (hwmon: string, device: string, thousandths: number) =>
+    [
+      `/sys/class/hwmon/${hwmon}/name:drivetemp`,
+      `/sys/class/hwmon/${hwmon}/temp1_input:${thousandths}`,
+      `/sys/class/hwmon/${hwmon}/device/model:SAMSUNG X  `,
+      `/sys/class/hwmon/${hwmon}/device/block/${device}/size:1`,
+    ].join("\n");
+  const files = parseFiles(`${drive("hwmon5", "sdb", 42000)}\n${drive("hwmon6", "sdc", 44000)}`);
+  const drives = sampleOf(undefined, count(files)).get("temp drives");
+  expect(drives?.chart.title).toBe("drives: temperatures");
+  expect([...(drives?.values ?? [])]).toEqual([
+    ["sdb SAMSUNG X", 42],
+    ["sdc SAMSUNG X", 44],
+  ]);
+});
+
 test("the CPU's sensor is found by its driver", () => {
   const files = (name: string) =>
     parseFiles(`/sys/class/hwmon/hwmon3/name:${name}\n/sys/class/hwmon/hwmon3/temp1_input:71250`);

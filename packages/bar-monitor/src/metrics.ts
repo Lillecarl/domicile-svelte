@@ -30,6 +30,7 @@ const FILES = [
   "/sys/block/*/stat /sys/block/*/dm/name",
   "/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq",
   "/sys/class/hwmon/*/name /sys/class/hwmon/*/*_label /sys/class/hwmon/*/*_input /sys/class/hwmon/*/*_average",
+  "/sys/class/hwmon/*/device/model /sys/class/hwmon/*/device/block/*/size",
   "/sys/class/drm/card[0-9]/gt/gt*/rps_act_freq_mhz /sys/class/drm/card[0-9]/gt/gt*/rc6_residency_ms",
   "/sys/class/drm/card[0-9]/device/gpu_busy_percent /sys/class/drm/card[0-9]/device/mem_info_vram_used",
   "/sys/class/power_supply/*/capacity",
@@ -279,15 +280,23 @@ export const count = (files: Files): Counts => {
     gauge(VRAM, found[1] ?? "", Number(text));
   }
 
+  // Each drive is a chip of its own (drivetemp): they share a chart.
+  const drives = new Map(
+    matching(/^(\/sys\/class\/hwmon\/hwmon\d+)\/device\/block\/([^/]+)\/size$/).map(
+      ({ found: [, at = "", device = ""] }) =>
+        [at, `${device} ${lines(`${at}/device/model`)[0] ?? ""}`.trim()] as const,
+    ),
+  );
   for (const { found, text } of matching(/^\/sys\/class\/hwmon\/(hwmon\d+)\/([a-z]+)(\d+)_(input|average)$/)) {
     const [, directory = "", kind = "", index = "", which] = found;
     const at = `/sys/class/hwmon/${directory}`;
-    const chip = lines(`${at}/name`)[0] ?? directory;
-    const label = lines(`${at}/${kind}${index}_label`)[0] ?? `${kind}${index}`;
+    const drive = drives.get(at);
+    const chip = drive === undefined ? (lines(`${at}/name`)[0] ?? directory) : "drives";
+    const label = drive ?? lines(`${at}/${kind}${index}_label`)[0] ?? `${kind}${index}`;
     const value = Number(text);
     const measure = SENSORS[kind];
-    // The directory too: two of a chip, such as two drives, share its name.
-    const id = `${kind} ${directory}`;
+    // The directory, as two of a chip share its name.
+    const id = `${kind} ${drive === undefined ? directory : "drives"}`;
     if (kind === "energy") {
       const chart: Chart = { id, section: "Sensors", title: `${chip}: power`, unit: "watts" };
       counter(chart, label, value, (each) => each / 1_000_000);
