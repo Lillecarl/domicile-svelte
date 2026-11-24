@@ -65,7 +65,15 @@ export const pageMenu = (click: Click, page: PageActions, extensions: readonly E
       : [
           ...(click.spellingSuggestions.length === 0
             ? [item("No spelling suggestions", () => undefined, false)]
-            : click.spellingSuggestions.map((word) => item(word, () => click.replaceMisspelling(word)))),
+            : click.spellingSuggestions.map(
+                (word): Entry => ({
+                  kind: "item",
+                  key: `spelling:${word}`,
+                  label: word,
+                  enabled: true,
+                  run: () => click.replaceMisspelling(word),
+                }),
+              )),
           does("Add to dictionary", "add-to-dictionary"),
         ],
     overLink
