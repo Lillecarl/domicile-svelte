@@ -6,6 +6,8 @@
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
   import {
     WEBVIEW_CONTEXT_MENU_EVENT,
+    WEBVIEW_DIALOG_EVENT,
+    WEBVIEW_DIALOG_WITHDRAWN_EVENT,
     WEBVIEW_FILE_CHOOSER_EVENT,
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
@@ -18,9 +20,11 @@
   import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
   import type { Entry } from "@domicile-svelte/menu";
   import { useDomicile } from "@domicile-svelte/svelte";
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
 
   import { addressOf } from "./address";
+  import { type Ask, dialogAsk } from "./ask";
+  import PageAsk from "./PageAsk.svelte";
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
   import { asksTo, permissionMenu } from "./permissions";
@@ -34,10 +38,13 @@
     onunload,
     onfullscreen,
     fullscreen,
+    active,
     drawn,
   }: {
     /** The page or the user asks for fullscreen, or out of it. */
     onfullscreen: (on: boolean) => void;
+    /** Whether the window has the keyboard, or had it last. */
+    active: boolean;
     /** Whether the window fills the screen. */
     fullscreen: boolean;
     /** The page asks for files, or where to save one: draw a picker and answer it. */
@@ -64,12 +71,44 @@
   let page = $state<Page>();
   let typed = $state("");
   let request = $state.raw<Request>();
+  // What the page asks, oldest first; the engine sends one of a kind at a time.
+  let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
+  let shown = $state<ReturnType<typeof PageAsk>>();
   // The SDK hands the engine's null as undefined. A site opened as an app
   // (`domicile open --app`) is drawn as an application, without one too.
   const chrome = $derived(!fullscreen && browserWindow.popupWindow === undefined && !browserWindow.isApp);
 
   // The list hands a new object on every change; the view follows the id.
   const id = $derived(browserWindow.id);
+
+  // Ask `ask`, in the place of any other of its kind.
+  const asks = (kind: string, event: Event, ask: Ask) => {
+    const next = { kind, event, ask };
+    asking = asking.some((each) => each.event === event)
+      ? asking.map((each) => (each.event === event ? next : each))
+      : [...asking.filter((each) => each.kind !== kind), next];
+  };
+  const asksNo = (kind: string) => {
+    asking = asking.filter((each) => each.kind !== kind);
+    regain();
+  };
+  // The keyboard back to the page, if its window has it.
+  const regain = () => {
+    if (active) {
+      void tick().then(focus);
+    }
+  };
+  const answered = (event: Event, answer: () => void) => {
+    // Still asked while it is answered: the answer reads it.
+    try {
+      answer();
+    } catch (error) {
+      // Its page went meanwhile.
+      console.error("[windows] answer", error);
+    }
+    asking = asking.filter((each) => each.event !== event);
+    regain();
+  };
 
   const mountView = (frame: HTMLElement, id: string) => {
     // The engine reads `window` once, when the view connects, and a window
@@ -132,6 +171,15 @@
       event.preventDefault();
       onfiles(event);
     });
+    // Unclaimed, the engine answers no.
+    view.addEventListener(WEBVIEW_DIALOG_EVENT, (event) => {
+      const ask = dialogAsk(event);
+      if (ask !== undefined) {
+        event.preventDefault();
+        asks("dialog", event, ask);
+      }
+    });
+    view.addEventListener(WEBVIEW_DIALOG_WITHDRAWN_EVENT, () => asksNo("dialog"));
     // The browser sends one at a time. Unclaimed, the page gets nothing.
     view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
       const asks = asksTo(event.permissions);
@@ -163,6 +211,7 @@
       page = undefined;
       // A view hears of no more; the browser asks the next one again.
       request = undefined;
+      asking = [];
     };
   };
 
@@ -190,7 +239,9 @@
 
   /** Focus the page, or the address bar while the page is blank. */
   export const focus = () => {
-    if (chrome && blank(page?.url ?? "")) {
+    if (shown !== undefined && shown !== null && asking[0]?.ask.aside !== true) {
+      shown.focus();
+    } else if (chrome && blank(page?.url ?? "")) {
       address?.focus();
       address?.select();
     } else {
@@ -277,6 +328,18 @@
   {/if}
   <div class="page" bind:this={frame}>
     {#if request !== undefined}<Permission {request} />{/if}
+    {#if asking[0] !== undefined}
+      {@const { event, ask } = asking[0]}
+      {#key event}
+        <PageAsk
+          bind:this={shown}
+          {ask}
+          {active}
+          onlink={(url) => browser.open(url)}
+          onanswered={(answer) => answered(event, answer)}
+        />
+      {/key}
+    {/if}
   </div>
 </div>
 

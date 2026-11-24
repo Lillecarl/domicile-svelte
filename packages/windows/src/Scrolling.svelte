@@ -1181,6 +1181,7 @@
           bind:this={frames[key]}
           window={page}
           {drawn}
+          active={key === active}
           fullscreen={fullscreen.has(key)}
           onfullscreen={(on) => setFullscreen(key, on)}
           onfocus={() => {
