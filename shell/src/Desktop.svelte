@@ -121,6 +121,10 @@
     "Meta+Ctrl+Up": () => layout?.moveWindow("up"),
     "Meta+Ctrl+Home": () => layout?.moveColumn("first"),
     "Meta+Ctrl+End": () => layout?.moveColumn("last"),
+    "Meta+Shift+H": () => layout?.moveColumn("left"),
+    "Meta+Shift+L": () => layout?.moveColumn("right"),
+    "Meta+Shift+J": () => layout?.moveWindow("down"),
+    "Meta+Shift+K": () => layout?.moveWindow("up"),
     "Meta+comma": () => layout?.consume(),
     "Meta+period": () => layout?.expel(),
     "Meta+bracketleft": () => layout?.consumeOrExpel("left"),
@@ -219,6 +223,11 @@
       usage: "close",
       description: "Ask the active window to close.",
       run: () => ran(() => layout?.close()),
+    },
+    unload: {
+      usage: "unload",
+      description: "Park the active page, and free its memory until it is shown.",
+      run: () => ran(() => layout?.unload()),
     },
     notifications: {
       usage: "notifications",
