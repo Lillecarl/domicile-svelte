@@ -10,8 +10,8 @@
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
-  import { Capturing, Portals } from "@domicile-svelte/portals";
-  import { useDomicile } from "@domicile-svelte/svelte";
+  import { Capturing, picture, Portals } from "@domicile-svelte/portals";
+  import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
   // Inlined, so the bundle needs no asset served beside it. Traced with
@@ -25,6 +25,11 @@
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
 
   const apps = installedSource(domicile);
+
+  // What applications set through the Wallpaper portal.
+  const wallpaper = watch(domicile.portals, "change", () => domicile.portals.wallpaper);
+  const background = picture(() => wallpaper.current?.background);
+  const lockPicture = picture(() => wallpaper.current?.lockscreen);
 
   const web: Source = {
     search: (query) => {
@@ -253,7 +258,7 @@
 <!-- Not hidden under the lock screen, only covered: a hidden <app> reports no
      area, the compositor hides its window, and the keyboard handed back on
      unlock reaches a window not yet shown again. -->
-<div class="desktop">
+<div class="desktop" style:background-image={background.url === undefined ? undefined : `url("${background.url}")`}>
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
@@ -267,8 +272,8 @@
     {/key}
   {/if}
 </div>
-<Portals onclose={() => layout?.refocus()} />
-<Lock background={lockscreen} onunlock={() => layout?.refocus()} />
+<Portals onclose={() => layout?.refocus()} icon={apps.appIcon} chords={Object.keys(bindings)} />
+<Lock background={lockPicture.url ?? lockscreen} onunlock={() => layout?.refocus()} />
 
 <style>
   .desktop {
@@ -277,6 +282,6 @@
     height: 100vh;
     padding: 0 8px;
     box-sizing: border-box;
-    background: #1e1e2e;
+    background: #1e1e2e center / cover no-repeat;
   }
 </style>

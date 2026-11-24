@@ -1,36 +1,55 @@
 <!--
   What applications ask for through xdg-desktop-portal, one at a time, oldest
-  first. A kind with no dialog here is refused, so its application does not
-  wait for an answer that never comes.
+  first. A screenshot, a color pick or a screen cast comes before the rest. A
+  kind this SDK cannot parse is refused, so its application does not wait for
+  an answer that never comes. It also fires the chords applications hold.
 -->
 <script lang="ts">
+  import { fireGlobalShortcuts } from "@domicile-desktop/sdk/global-shortcuts";
   import { PortalAnswer, PortalKind, type PortalRequest } from "@domicile-desktop/sdk/portal";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
 
+  import Agent from "./Agent.svelte";
+  import AppChooser from "./AppChooser.svelte";
   import FileChooser from "./FileChooser.svelte";
+  import Frozen from "./Frozen.svelte";
+  import Launcher from "./Launcher.svelte";
+  import Print from "./Print.svelte";
+  import { questionOf } from "./question";
   import ScreenCast from "./ScreenCast.svelte";
+  import Shortcuts from "./Shortcuts.svelte";
+  import YesNo from "./YesNo.svelte";
 
   const {
     onclose,
+    icon = () => undefined,
+    chords = [],
   }: {
     /** A dialog closed and gave up the keyboard: hand it back. */
     onclose?: () => void;
+    /** An application's icon, by its desktop file id. */
+    icon?: (id: string) => string | undefined;
+    /** The chords the shell holds, which an application may not have. */
+    chords?: readonly string[];
   } = $props();
 
-  const { portals } = useDomicile();
+  const domicile = useDomicile();
+  const { portals } = domicile;
   const requests = watch(portals, "change", () => portals.requests ?? []);
 
-  type Drawn = Extract<PortalRequest, { kind: PortalKind.FileChooser | PortalKind.ScreenCast }>;
-  const drawn = (request: PortalRequest): request is Drawn =>
-    request.kind === PortalKind.FileChooser || request.kind === PortalKind.ScreenCast;
-  const shown = $derived(requests.current.find(drawn));
+  $effect(() => fireGlobalShortcuts(domicile));
 
-  // Not an inhibitor: that is no question, and the compositor refuses answers to it.
+  const CAPTURES = [PortalKind.ScreenCast, PortalKind.Screenshot, PortalKind.PickColor];
+  // An inhibitor is no question, and the compositor refuses answers to it.
+  const asked = $derived(
+    requests.current.filter(({ kind }) => kind !== PortalKind.Inhibit && kind !== PortalKind.Unknown),
+  );
+  const shown = $derived<PortalRequest | undefined>(asked.find(({ kind }) => CAPTURES.includes(kind)) ?? asked[0]);
+
   $effect(() => {
-    for (const request of requests.current) {
-      if (!drawn(request) && request.kind !== PortalKind.Inhibit) {
-        console.warn("[portals] no dialog for", PortalKind[request.kind], "from", request.appId);
-        portals.answer(request.id, PortalAnswer.Refused());
+    for (const { id, kind } of requests.current) {
+      if (kind === PortalKind.Unknown) {
+        portals.answer(id, PortalAnswer.Refused());
       }
     }
   });
@@ -47,12 +66,28 @@
 </script>
 
 {#if shown !== undefined}
-  {@const { id } = shown}
+  {@const { id, appId } = shown}
+  {@const answer = (given: PortalAnswer) => portals.answer(id, given)}
   {#key id}
     {#if shown.kind === PortalKind.FileChooser}
-      <FileChooser body={shown.body} answer={(answer) => portals.answer(id, answer)} />
+      <FileChooser body={shown.body} {answer} />
+    {:else if shown.kind === PortalKind.ScreenCast}
+      <ScreenCast {appId} body={shown.body} {answer} />
+    {:else if shown.kind === PortalKind.AppChooser}
+      <AppChooser body={shown.body} {icon} {answer} />
+    {:else if shown.kind === PortalKind.DynamicLauncher}
+      <Launcher {appId} body={shown.body} {answer} />
+    {:else if shown.kind === PortalKind.GlobalShortcuts}
+      <Shortcuts {appId} body={shown.body} {chords} {answer} />
+    {:else if shown.kind === PortalKind.Agent}
+      <Agent body={shown.body} {answer} />
+    {:else if shown.kind === PortalKind.Print}
+      <Print body={shown.body} {answer} />
+    {:else if shown.kind === PortalKind.Screenshot || shown.kind === PortalKind.PickColor}
+      <Frozen desk={shown.body} pixel={shown.kind === PortalKind.PickColor} {answer} />
     {:else}
-      <ScreenCast appId={shown.appId} body={shown.body} answer={(answer) => portals.answer(id, answer)} />
+      {@const question = questionOf(shown)}
+      {#if question !== undefined}<YesNo {question} {answer} />{/if}
     {/if}
   {/key}
 {/if}
