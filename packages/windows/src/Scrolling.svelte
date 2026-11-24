@@ -83,7 +83,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, capture, windows } = useDomicile();
+  const { browser, capture, extensions, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const pages = watch(browser, "change", () => browser.windows);
@@ -153,6 +153,15 @@
     const view = viewWidth;
     if (view > 0 && !overview) {
       scroll = untrack(() => filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
+    }
+  });
+
+  // The bar shows, and keys run, the extensions of the profile of the page last
+  // focused. An Electron app's page is in none.
+  const profile = $derived((pages.current ?? []).find((page) => keyOf(page) === active)?.profile);
+  $effect(() => {
+    if (profile !== undefined) {
+      extensions.setProfile(profile);
     }
   });
 

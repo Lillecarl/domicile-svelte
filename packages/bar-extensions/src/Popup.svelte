@@ -14,11 +14,14 @@
 
   const {
     url,
+    profile,
     right,
     trigger,
     onclose,
   }: {
     url: string;
+    /** The browser profile the extension is in, with its storage and sign-ins. */
+    profile: string;
     right: number;
     /** The button that opened the panel. */
     trigger: HTMLElement | undefined;
@@ -40,6 +43,7 @@
     // markup cannot promise it is set first.
     const view = document.createElement("webview") as PopupView;
     view.setAttribute("extensionpopup", "");
+    view.setAttribute("profile", profile);
     view.setAttribute("src", url);
     // Until the page reports a size the view keeps its intrinsic 300x150: a
     // 0x0 view never lays its page out, so the page never sizes itself.

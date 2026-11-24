@@ -22,12 +22,12 @@
   const { browser, extensions } = useDomicile();
   const list = watch(extensions, "change", () => (extensions.list ?? []).filter(({ enabled }) => enabled));
 
-  let open = $state<{ id: string; url: string; right: number }>();
+  let open = $state<{ id: string; url: string; profile: string; right: number }>();
   const anchors: Record<string, HTMLElement> = {};
 
-  const show = (id: string, url: string) => {
+  const show = (id: string, url: string, profile: string) => {
     const box = anchors[id]?.getBoundingClientRect();
-    open = { id, url, right: box === undefined ? 0 : Math.max(0, window.innerWidth - box.right) };
+    open = { id, url, profile, right: box === undefined ? 0 : Math.max(0, window.innerWidth - box.right) };
   };
 
   const close = () => {
@@ -35,12 +35,12 @@
     onclose?.();
   };
 
-  const click = (id: string, popup: string | undefined) => {
+  const click = (id: string, popup: string | undefined, profile: string) => {
     extensions.activate(id);
     if (open?.id === id) {
       close();
     } else if (popup !== undefined) {
-      show(id, popup);
+      show(id, popup, profile);
     }
   };
 
@@ -50,7 +50,7 @@
     onclose?.();
   };
 
-  const own = (id: string): Entry[] => {
+  const own = (id: string, profile: string): Entry[] => {
     const options = extensions.installed?.find((each) => each.id === id)?.optionsUrl;
     return [
       ...commandsOf(extensions, id).map(({ name, description, keys }): Entry => ({
@@ -70,13 +70,13 @@
               key: "options",
               label: "Options",
               enabled: true,
-              run: () => browser.open(options),
+              run: () => browser.open(options, { profile }),
             },
           ]),
     ];
   };
 
-  const showMenu = (event: MouseEvent, id: string, title: string) => {
+  const showMenu = (event: MouseEvent, id: string, title: string, profile: string) => {
     event.preventDefault();
     if (!runsCommands(extensions)) {
       return;
@@ -88,7 +88,7 @@
         const entries: Entry[] = [
           ...entriesOf(items, (item) => extensions.runMenuItem(item)),
           { kind: "separator", key: "own" },
-          ...own(id),
+          ...own(id, profile),
         ];
         open = undefined;
         menu = { id, title, entries, x: box?.left ?? 0, y: box?.bottom ?? 0 };
@@ -96,15 +96,15 @@
       .catch((error: unknown) => console.error("[bar-extensions] menu:", error));
   };
 
-  $effect(() => extensions.on("popup", ({ id, popup }) => show(id, popup)));
+  $effect(() => extensions.on("popup", ({ id, popup, profile }) => show(id, popup, profile)));
 </script>
 
 {#each list.current as extension (extension.id)}
   <span class="action" bind:this={anchors[extension.id]}>
     <BarItem
       title={extension.title || extension.name}
-      onclick={() => click(extension.id, extension.popup)}
-      oncontextmenu={(event) => showMenu(event, extension.id, extension.title || extension.name)}
+      onclick={() => click(extension.id, extension.popup, extension.profile)}
+      oncontextmenu={(event) => showMenu(event, extension.id, extension.title || extension.name, extension.profile)}
     >
       <img src={extension.icon} alt={extension.title || extension.name} />
       {#if extension.badgeText !== ""}
@@ -116,7 +116,7 @@
 
 {#if open !== undefined}
   {#key open}
-    <Popup url={open.url} right={open.right} trigger={anchors[open.id]} onclose={close} />
+    <Popup url={open.url} profile={open.profile} right={open.right} trigger={anchors[open.id]} onclose={close} />
   {/key}
 {/if}
 
