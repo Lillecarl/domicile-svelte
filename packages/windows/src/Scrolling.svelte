@@ -9,7 +9,8 @@
 
   Bind keys to `move`, `close`, `park`, `refocus` and niri's column actions
   (`consumeOrExpel`, `maximize`, `cycleWidth` and the rest); `listing` and
-  `show` serve a window switcher.
+  `show` serve a window switcher. `toggleOverview` draws it all smaller, parked
+  windows too, to pick and move windows in.
 -->
 <script lang="ts" module>
   /** A window as a switcher lists it. */
@@ -32,6 +33,7 @@
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import {
+    type Box,
     center as centered,
     type Columns,
     columnOf,
@@ -51,6 +53,19 @@
     sync,
     toggleFull,
   } from "./columns";
+  import {
+    boundsOf,
+    clampPan,
+    type Drop,
+    dropAt,
+    dropped,
+    markOf,
+    panTo,
+    parkedRow,
+    ROW_GAP,
+    type Size,
+    zoomFor,
+  } from "./overview";
 
   const {
     width = 1 / 2,
@@ -96,6 +111,10 @@
   // Oldest first. A closed window's key stays until it is shown or parked
   // again; `listing` leaves it out.
   let parked = $state<string[]>([]);
+  // What each was sized when it was parked: shown again at that, its client
+  // need not draw anew.
+  const parkedSizes: Record<string, Size> = {};
+  let overview = $state(false);
 
   // The effects below read the state they write untracked: tracked, each
   // write would rerun the effect that made it.
@@ -106,6 +125,7 @@
       // A parked app that takes the keyboard (one asked to open again) comes
       // back.
       untrack(() => {
+        overview = false;
         if (parked.includes(now)) {
           parked = parked.filter((key) => key !== now);
         }
@@ -125,12 +145,12 @@
   // a closed or narrowed column leaves no empty space behind. A pre effect, so
   // the scroll reaches the DOM in the same update as the boxes: a later update
   // would settle from a start that already holds the new boxes, and the strip
-  // would jump.
+  // would jump. Not in the overview, which pans instead.
   $effect.pre(() => {
     const span = across[columnOf(columns, active)];
     const strip = across;
     const view = viewWidth;
-    if (view > 0) {
+    if (view > 0 && !overview) {
       scroll = untrack(() => filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
     }
   });
@@ -178,7 +198,7 @@
   // settle below), so the change waits for its stills; changes queue behind
   // each other in order.
   let rearranging = Promise.resolve();
-  const rearrange = (change: (columns: Columns, key: string) => Columns) => {
+  const rearrange = (change: (columns: Columns, key: string) => Columns, also?: () => void) => {
     const key = active;
     if (key === undefined) {
       return;
@@ -201,6 +221,8 @@
           }
         }
         columns = change($state.snapshot(columns) as Columns, key);
+        // In the same update, so the tiles settle from where both left them.
+        also?.();
       })
       .catch((error: unknown) => console.error("[windows] rearranging", error));
   };
@@ -218,6 +240,11 @@
     apps.some((window) => window.appId === key) || (pages.current ?? []).some((page) => keyOf(page) === key);
 
   const focus = (key: string) => {
+    // The overview has the keyboard, and hands it to the window it closes on.
+    if (overview) {
+      active = key;
+      return;
+    }
     if (!(pages.current ?? []).some((page) => keyOf(page) === key)) {
       releasePage();
       windows.focus(key);
@@ -253,9 +280,12 @@
     });
   });
 
-  /** Give the keyboard back to the window that last held it. */
+  /** Give the keyboard back to the window that last held it, or to the overview. */
   export const refocus = () => {
-    if (active !== undefined && exists(active)) {
+    if (overview) {
+      windows.focusShell();
+      layer?.focus();
+    } else if (active !== undefined && exists(active)) {
       focus(active);
     }
   };
@@ -326,7 +356,11 @@
     const next = (["left", "right", "up", "down"] as const)
       .map((direction) => neighbor(columns, key, direction))
       .find((found) => found !== undefined && found !== key);
-    parked = [...parked, key];
+    const box = boxes.get(key);
+    if (box !== undefined) {
+      parkedSizes[key] = { width: box.width, height: box.height };
+    }
+    parked = [...parked.filter((each) => each !== key), key];
     if (next === undefined) {
       active = undefined;
       releasePage();
@@ -338,6 +372,7 @@
 
   /** Bring `key` back, parked or not, and give it the keyboard. */
   export const show = async (key: string) => {
+    overview = false;
     if (parked.includes(key)) {
       parked = parked.filter((each) => each !== key);
       // Placed beside the active window once the columns follow.
@@ -425,10 +460,34 @@
     };
   };
 
-  // Before the DOM takes the new boxes.
+  const floatBox = (page: Page) => {
+    const w = Math.min(page.width || 480, viewWidth);
+    const h = Math.min(page.height || 640, viewHeight);
+    return { x: (viewWidth - w) / 2, y: (viewHeight - h) / 2, width: w, height: h };
+  };
+
+  let strip = $state<HTMLElement>();
+  const parkedBoxes = $derived.by(() => {
+    if (!overview) {
+      return new Map<string, Box>();
+    }
+    const sizes = parked.flatMap((key): [string, Size][] => {
+      const page = (pages.current ?? []).find((each) => keyOf(each) === key);
+      if (page === undefined && !exists(key)) {
+        return [];
+      }
+      const fallback = page !== undefined && floats(page) ? floatBox(page) : undefined;
+      return [[key, parkedSizes[key] ?? fallback ?? { width: (viewWidth - gap) * width, height: viewHeight }]];
+    });
+    return parkedRow(new Map(sizes), { strip: across.at(-1)?.end ?? 0, height: viewHeight, gap });
+  });
+
+  // Before the DOM takes the new boxes. Parked windows too: the first run is
+  // at once, so all it reads is declared above.
   $effect.pre(() => {
     void boxes;
     void scroll;
+    void parkedBoxes;
     untrack(() => {
       drawnBefore = new Map();
       for (const [key, tile] of Object.entries(tiles)) {
@@ -442,10 +501,14 @@
   $effect(() => {
     void boxes;
     void scroll;
+    void parkedBoxes;
     untrack(() => {
       if (reducedMotion.current) {
         return;
       }
+      // Rects are on the screen; a tile moves in the strip's own pixels, which
+      // the overview draws smaller.
+      const drawn = strip === undefined || viewWidth === 0 ? 1 : strip.getBoundingClientRect().width / viewWidth;
       for (const [key, tile] of Object.entries(tiles)) {
         const before = drawnBefore.get(key);
         if (tile === null || before === undefined || before.width === 0 || before.height === 0) {
@@ -460,8 +523,8 @@
         if (after.width === 0 || after.height === 0) {
           continue;
         }
-        const x = before.left - after.left;
-        const y = before.top - after.top;
+        const x = (before.left - after.left) / drawn;
+        const y = (before.top - after.top) / drawn;
         const scaleX = before.width / after.width;
         const scaleY = before.height / after.height;
         if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5 && Math.abs(scaleX - 1) < 0.001 && Math.abs(scaleY - 1) < 0.001) {
@@ -479,10 +542,177 @@
   // would place it.
   let menu = $state.raw<{ entries: Entry[]; x: number; y: number }>();
 
-  const floatBox = (page: Page) => {
-    const w = Math.min(page.width || 480, viewWidth);
-    const h = Math.min(page.height || 640, viewHeight);
-    return { x: (viewWidth - w) / 2, y: (viewHeight - h) / 2, width: w, height: h };
+  // The overview: the strip's box, drawn smaller by a transform. The windows
+  // keep their layout, so no client draws anew, and stay live. A layer over
+  // them takes the pointer and the keyboard.
+  let layer = $state<HTMLElement | null>();
+  const view = $derived({ width: viewWidth, height: viewHeight });
+  const bounds = $derived(
+    boundsOf([{ x: 0, y: 0, width: 0, height: viewHeight }, ...boxes.values(), ...parkedBoxes.values()]),
+  );
+  const zoom = $derived(zoomFor(bounds, view));
+  let wanted = $state(0);
+  const pan = $derived(clampPan(wanted, bounds, view, zoom));
+  const top = $derived((viewHeight - zoom * bounds.height) / 2 - zoom * bounds.y);
+  const camera = $derived(
+    overview ? `translate(${viewWidth / 2 - zoom * (pan - scroll)}px, ${top}px) scale(${zoom})` : "none",
+  );
+
+  // The active window in the overview's view.
+  $effect.pre(() => {
+    const box = active === undefined ? undefined : (boxes.get(active) ?? parkedBoxes.get(active));
+    if (overview && box !== undefined) {
+      wanted = untrack(() => panTo(pan, box, view, zoom));
+    }
+  });
+
+  $effect(() => {
+    if (layer !== undefined && layer !== null) {
+      untrack(refocus);
+    }
+  });
+
+  /** Open the overview, or close it on the active window. */
+  export const toggleOverview = () => {
+    if (overview) {
+      overview = false;
+      refocus();
+    } else {
+      wanted = scroll + viewWidth / 2;
+      releasePage();
+      overview = true;
+    }
+  };
+
+  let drag = $state<{ key: string; from: { x: number; y: number }; by: { x: number; y: number } }>();
+  let dropping = $state<Drop | "park">();
+  let pressed: { key: string | undefined; from: { x: number; y: number } } | undefined;
+  const DRAG_AFTER = 8;
+
+  const pointIn = ({ clientX, clientY }: MouseEvent) => {
+    const corner = layer?.getBoundingClientRect();
+    return {
+      x: (clientX - (corner?.left ?? 0) - viewWidth / 2) / zoom + pan,
+      y: (clientY - (corner?.top ?? 0) - top) / zoom,
+    };
+  };
+
+  // Floating windows are over the others.
+  const keyAt = ({ clientX: x, clientY: y }: MouseEvent) =>
+    Object.entries(tiles)
+      .filter(([, tile]) => {
+        const rect = tile?.getBoundingClientRect();
+        return rect !== undefined && x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
+      })
+      .map(([key]) => key)
+      .sort((one, other) => Number(boxes.has(one)) - Number(boxes.has(other)))[0];
+
+  const press = (event: PointerEvent & { currentTarget: HTMLElement }) => {
+    if (event.button === 0) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pressed = { key: keyAt(event), from: pointIn(event) };
+    }
+  };
+
+  const dragOver = (event: PointerEvent) => {
+    const key = pressed?.key;
+    if (pressed === undefined || key === undefined || !(boxes.has(key) || parkedBoxes.has(key))) {
+      return;
+    }
+    const at = pointIn(event);
+    const by = { x: at.x - pressed.from.x, y: at.y - pressed.from.y };
+    if (drag !== undefined || Math.hypot(by.x, by.y) * zoom >= DRAG_AFTER) {
+      drag = { key, from: pressed.from, by };
+      dropping = at.y > viewHeight + ROW_GAP / 2 ? "park" : dropAt(columns, boxes, key, at);
+    }
+  };
+
+  const unpark = async (key: string) => {
+    parked = parked.filter((each) => each !== key);
+    // Beside the active window once the columns follow.
+    await tick();
+  };
+
+  const drop = async (key: string, where: Drop | "park" | undefined) => {
+    const letGo = () => {
+      drag = undefined;
+      dropping = undefined;
+    };
+    if (where === undefined || (where === "park" && parked.includes(key))) {
+      letGo();
+    } else if (where === "park") {
+      active = key;
+      park();
+      letGo();
+    } else {
+      if (parked.includes(key)) {
+        await unpark(key);
+      }
+      active = key;
+      // A floating window goes back to its own place.
+      if (columnOf(columns, key) === -1) {
+        letGo();
+      } else {
+        rearrange((now) => dropped(now, key, where, width), letGo);
+      }
+    }
+  };
+
+  const release = () => {
+    const { key } = pressed ?? {};
+    pressed = undefined;
+    if (drag !== undefined) {
+      void drop(drag.key, dropping);
+    } else if (key === undefined) {
+      toggleOverview();
+    } else {
+      void show(key);
+    }
+  };
+
+  const wheel = (event: WheelEvent) => {
+    event.preventDefault();
+    wanted = clampPan(pan + (event.deltaX || event.deltaY) / zoom, bounds, view, zoom);
+  };
+
+  const ARROWS: Record<string, Direction> = {
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    ArrowUp: "up",
+    ArrowDown: "down",
+  };
+  const keydown = (event: KeyboardEvent) => {
+    const direction = ARROWS[event.key];
+    if (event.key === "Escape" || event.key === "Enter") {
+      toggleOverview();
+    } else if (direction !== undefined) {
+      move(direction);
+    } else {
+      return;
+    }
+    event.preventDefault();
+  };
+
+  // Closed some other way, such as by a window that took the keyboard.
+  $effect(() => {
+    if (!overview) {
+      drag = undefined;
+      dropping = undefined;
+      pressed = undefined;
+    }
+  });
+
+  const mark = $derived(
+    dropping === "park"
+      ? { x: 0, y: viewHeight + ROW_GAP / 2, width: Math.max(viewWidth, bounds.width), height: gap }
+      : dropping === undefined
+        ? undefined
+        : markOf(columns, boxes, dropping, gap),
+  );
+
+  const translateOf = (key: string, box: Box | undefined, fixed = false) => {
+    const by = drag?.key === key ? drag.by : { x: 0, y: 0 };
+    return `${(box?.x ?? 0) - (fixed ? 0 : scroll) + by.x}px ${(box?.y ?? 0) + by.y}px`;
   };
 </script>
 
@@ -496,48 +726,87 @@
 <div class="view" bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
   <!-- Two append-only lists, so no element ever moves in the document: a
        moved <webview> reconnects, and its page shows in one view at a time. -->
-  {#each apps as window (window.appId)}
-    {@const box = boxes.get(window.appId)}
+  <div
+    class="strip"
+    bind:this={strip}
+    style:transform={camera}
+    style:transition={reducedMotion.current ? "none" : `transform ${settle}ms ${SETTLE_CURVE}`}
+    style:--zoom={overview ? zoom : 1}
+  >
+    {#each apps as window (window.appId)}
+      {@const box = boxes.get(window.appId) ?? parkedBoxes.get(window.appId)}
+      <div
+        class="tile"
+        class:hidden={box === undefined}
+        class:active={window.appId === active}
+        class:dragged={window.appId === drag?.key}
+        bind:this={tiles[window.appId]}
+        style:translate={translateOf(window.appId, box)}
+        style:width="{box?.width ?? 0}px"
+        style:height="{box?.height ?? 0}px"
+      >
+        <app app-id={window.appId}></app>
+        {@render still(window.appId)}
+      </div>
+    {/each}
+    {#each pages.current ?? [] as page (page.id)}
+      {@const key = keyOf(page)}
+      {@const floating = floats(page)}
+      {@const isParked = parked.includes(key)}
+      {@const box = isParked ? parkedBoxes.get(key) : floating ? floatBox(page) : boxes.get(key)}
+      <div
+        class="tile"
+        class:floating
+        class:hidden={box === undefined}
+        class:active={key === active}
+        class:dragged={key === drag?.key}
+        bind:this={tiles[key]}
+        style:translate={translateOf(key, box, floating && !isParked)}
+        style:width="{box?.width ?? 0}px"
+        style:height="{box?.height ?? 0}px"
+      >
+        <BrowserWindow
+          bind:this={frames[key]}
+          window={page}
+          onfocus={() => {
+            active = key;
+            windows.focusShell();
+          }}
+          onfocusrequest={() => focus(key)}
+          onmenu={(entries, x, y) => (menu = { entries, x, y })}
+        />
+        {@render still(key)}
+      </div>
+    {/each}
+    {#if overview && mark !== undefined}
+      <div
+        class="mark"
+        style:translate="{mark.x - scroll}px {mark.y}px"
+        style:width="{mark.width}px"
+        style:height="{mark.height}px"
+      ></div>
+    {/if}
+  </div>
+  {#if overview}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
-      class="tile"
-      class:hidden={box === undefined}
-      class:active={window.appId === active}
-      bind:this={tiles[window.appId]}
-      style:translate="{(box?.x ?? 0) - scroll}px {box?.y ?? 0}px"
-      style:width="{box?.width ?? 0}px"
-      style:height="{box?.height ?? 0}px"
-    >
-      <app app-id={window.appId}></app>
-      {@render still(window.appId)}
-    </div>
-  {/each}
-  {#each pages.current ?? [] as page (page.id)}
-    {@const key = keyOf(page)}
-    {@const floating = floats(page)}
-    {@const box = parked.includes(key) ? undefined : floating ? floatBox(page) : boxes.get(key)}
-    <div
-      class="tile"
-      class:floating
-      class:hidden={box === undefined}
-      class:active={key === active}
-      bind:this={tiles[key]}
-      style:translate={floating ? `${box?.x ?? 0}px ${box?.y ?? 0}px` : `${(box?.x ?? 0) - scroll}px ${box?.y ?? 0}px`}
-      style:width="{box?.width ?? 0}px"
-      style:height="{box?.height ?? 0}px"
-    >
-      <BrowserWindow
-        bind:this={frames[key]}
-        window={page}
-        onfocus={() => {
-          active = key;
-          windows.focusShell();
-        }}
-        onfocusrequest={() => focus(key)}
-        onmenu={(entries, x, y) => (menu = { entries, x, y })}
-      />
-      {@render still(key)}
-    </div>
-  {/each}
+      class="layer"
+      role="dialog"
+      aria-label="Overview"
+      tabindex="-1"
+      bind:this={layer}
+      onpointerdown={press}
+      onpointermove={dragOver}
+      onpointerup={release}
+      onpointercancel={() => {
+        pressed = undefined;
+        drag = undefined;
+        dropping = undefined;
+      }}
+      onwheel={wheel}
+      onkeydown={keydown}
+    ></div>
+  {/if}
 </div>
 
 {#if menu !== undefined}
@@ -562,6 +831,33 @@
     min-height: 0;
     margin: 8px 0;
     overflow: hidden;
+  }
+
+  .strip {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+  }
+
+  .layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    outline: none;
+  }
+
+  .mark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 2;
+    border-radius: 4px;
+    background: #a6e3a1;
+  }
+
+  .dragged {
+    z-index: 3;
+    opacity: 0.8;
   }
 
   .tile {
@@ -592,7 +888,7 @@
     position: absolute;
     inset: 0;
     z-index: 1;
-    border: 2px solid #74c7ec;
+    border: calc(2px / var(--zoom, 1)) solid #74c7ec;
     border-radius: inherit;
     pointer-events: none;
   }

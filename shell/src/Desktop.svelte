@@ -97,6 +97,7 @@
     },
     "Meta+space": () => keymap?.next(),
     "Meta+p": () => layout?.park(),
+    "Meta+o": () => layout?.toggleOverview(),
     // swaylock's key under niri.
     "Ctrl+Alt+Delete": () => domicile.session.lock(),
     // The layout keys as croshome's niri config binds them.
@@ -203,6 +204,11 @@
         side === "left" || side === "right"
           ? ran(() => layout?.consumeOrExpel(side))
           : Err("consume-or-expel takes left or right"),
+    },
+    overview: {
+      usage: "overview",
+      description: "Open the overview of every window, or close it on the active one.",
+      run: () => ran(() => layout?.toggleOverview()),
     },
     park: {
       usage: "park",
