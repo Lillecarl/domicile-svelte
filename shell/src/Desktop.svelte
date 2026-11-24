@@ -5,8 +5,8 @@
   import Clock from "@domicile-svelte/bar-clock";
   import Extensions from "@domicile-svelte/bar-extensions";
   import Keymap from "@domicile-svelte/bar-keymap";
+  import Monitor from "@domicile-svelte/bar-monitor";
   import Notifications from "@domicile-svelte/bar-notifications";
-  import Temperature from "@domicile-svelte/bar-temperature";
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
@@ -62,6 +62,7 @@
   };
 
   let keymap = $state<ReturnType<typeof Keymap>>();
+  let monitor = $state<ReturnType<typeof Monitor>>();
   let notifications = $state<ReturnType<typeof Notifications>>();
 
   let launcher = $state<{ sources: Source[]; placeholder: string }>();
@@ -214,6 +215,11 @@
       description: "Open the notification history, or close it.",
       run: () => ran(() => notifications?.toggle()),
     },
+    monitor: {
+      usage: "monitor",
+      description: "Open the system monitor, or close it.",
+      run: () => ran(() => monitor?.toggle()),
+    },
     "settle-ms": {
       usage: "settle-ms <ms>",
       description: "Set how long tiles take to ease into a new box.",
@@ -270,7 +276,7 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Capturing /><Temperature /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
+    {#snippet right()}<Capturing /><Monitor bind:this={monitor} onclose={() => layout?.refocus()} /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}
