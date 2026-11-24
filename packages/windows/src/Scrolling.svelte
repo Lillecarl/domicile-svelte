@@ -29,7 +29,8 @@
   import { PreviewedWindow } from "@domicile-desktop/sdk/previewed-window";
   import { type Entry, Menu } from "@domicile-svelte/menu";
   import { FileChooser } from "@domicile-svelte/portals";
-  import { useDomicile, watch } from "@domicile-svelte/svelte";
+  import { WindowRequestKind, WindowState } from "@domicile-desktop/sdk/window-state";
+  import { fromListening, useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
   import { MediaQuery, SvelteMap, SvelteSet } from "svelte/reactivity";
 
@@ -51,6 +52,7 @@
     nextPreset,
     place,
     scrollTo,
+    setFull,
     spans,
     sync,
     toggleFull,
@@ -125,6 +127,10 @@
   // need not draw anew.
   const parkedSizes: Record<string, Size> = {};
   let overview = $state(false);
+  // Fullscreen windows. One fills the screen while it is the active window,
+  // and keeps its place on the strip.
+  const fullscreen = new SvelteSet<string>();
+  const covering = $derived(!overview && active !== undefined && fullscreen.has(active) ? active : undefined);
   // The last session's pages, until each is opened again.
   let asleep = $state.raw<Asleep[]>([]);
   // Asked to open, and not listed yet.
@@ -383,6 +389,9 @@
     untrack(() => {
       const closed = present.filter((key) => !now.includes(key));
       present = now;
+      for (const key of closed) {
+        fullscreen.delete(key);
+      }
       if (closed.length === 0) {
         return;
       }
@@ -562,6 +571,21 @@
   /** Maximize the active window's column, or give it back its width. */
   export const maximize = () => rearrange(toggleFull);
 
+  const setFullscreen = (key: string, on: boolean) => {
+    if (on) {
+      fullscreen.add(key);
+    } else {
+      fullscreen.delete(key);
+    }
+  };
+
+  /** Fill the screen with the active window, or put it back on the strip. */
+  export const toggleFullscreen = () => {
+    if (active !== undefined && exists(active)) {
+      setFullscreen(active, !fullscreen.has(active));
+    }
+  };
+
   /** Step the active window's column through `presets`. */
   export const cycleWidth = () => rearrange((now, key) => nextPreset(now, key, presets));
 
@@ -595,6 +619,100 @@
       focus(next);
     }
   };
+
+  const minimize = (key: string) => {
+    if (key === active) {
+      park();
+    } else if (!parked.includes(key)) {
+      parked = [...parked, key];
+    }
+  };
+
+  // What native windows ask to be. None of it happens until the states say so.
+  $effect(() =>
+    fromListening(
+      () => windows.requests(),
+      "what windows ask",
+    )((request) => {
+      const { appId } = request;
+      switch (request.kind) {
+        case WindowRequestKind.Fullscreen:
+        case WindowRequestKind.Unfullscreen:
+          return setFullscreen(appId, request.kind === WindowRequestKind.Fullscreen);
+        case WindowRequestKind.Maximize:
+        case WindowRequestKind.Unmaximize:
+          return rearrange((now) => setFull(now, appId, request.kind === WindowRequestKind.Maximize));
+        case WindowRequestKind.Minimize:
+          return minimize(appId);
+        default:
+          return undefined;
+      }
+    }),
+  );
+
+  const isMaximized = (key: string) => columns[columnOf(columns, key)]?.full === true;
+
+  const TILED = [WindowState.TiledLeft, WindowState.TiledRight, WindowState.TiledTop, WindowState.TiledBottom];
+  const told = new Map<string, string>();
+  $effect(() => {
+    for (const { appId } of apps) {
+      const states = [
+        ...TILED,
+        ...(isMaximized(appId) ? [WindowState.Maximized] : []),
+        ...(fullscreen.has(appId) ? [WindowState.Fullscreen] : []),
+      ];
+      const said = states.join();
+      if (told.get(appId) !== said) {
+        told.set(appId, said);
+        windows
+          .setStates(appId, states)
+          .then((set) =>
+            set.match({ Ok: () => undefined, Err: (error) => console.error("[windows] states of", appId, error) }),
+          )
+          .catch((error: unknown) => console.error("[windows] states of", appId, error));
+      }
+    }
+    for (const appId of told.keys()) {
+      if (!apps.some((window) => window.appId === appId)) {
+        told.delete(appId);
+      }
+    }
+  });
+
+  // What an Electron app asks its window to be, acted on as it changes.
+  type Wants = { fullscreen: boolean; maximized: boolean; minimized: boolean };
+  const wishes = new Map<string, Wants>();
+  $effect(() => {
+    for (const page of pages.current ?? []) {
+      const key = keyOf(page);
+      const was = wishes.get(key) ?? { fullscreen: false, maximized: false, minimized: false };
+      const now = { fullscreen: page.wantsFullscreen, maximized: page.wantsMaximized, minimized: page.wantsMinimized };
+      wishes.set(key, now);
+      untrack(() => {
+        if (now.fullscreen !== was.fullscreen) {
+          setFullscreen(key, now.fullscreen);
+        }
+        if (now.maximized !== was.maximized) {
+          rearrange((each) => setFull(each, key, now.maximized));
+        }
+        if (now.minimized && !was.minimized) {
+          minimize(key);
+        } else if (was.minimized && !now.minimized && parked.includes(key)) {
+          void show(key);
+        }
+      });
+    }
+  });
+  $effect(() => {
+    for (const page of pages.current ?? []) {
+      const key = keyOf(page);
+      browser.setWindowState(page.id, {
+        fullscreen: fullscreen.has(key),
+        maximized: isMaximized(key),
+        minimized: parked.includes(key),
+      });
+    }
+  });
 
   // Longer than the engine takes to hear that no view shows a page.
   const HIDDEN_MS = 1000;
@@ -741,6 +859,7 @@
     void boxes;
     void scroll;
     void parkedBoxes;
+    void covering;
     untrack(() => {
       drawnBefore = new Map();
       for (const [key, tile] of Object.entries(tiles)) {
@@ -755,6 +874,7 @@
     void boxes;
     void scroll;
     void parkedBoxes;
+    void covering;
     untrack(() => {
       if (reducedMotion.current) {
         return;
@@ -1011,6 +1131,7 @@
       <div
         class="tile native"
         class:hidden={box === undefined}
+        class:covering={window.appId === covering}
         class:menu={popups.some((popup) => popup.window.grab)}
         class:active={window.appId === active}
         class:dragged={window.appId === drag?.key}
@@ -1045,6 +1166,7 @@
       <div
         class="tile"
         class:floating
+        class:covering={key === covering}
         class:hidden={box === undefined}
         class:active={key === active}
         class:dragged={key === drag?.key}
@@ -1057,6 +1179,8 @@
           bind:this={frames[key]}
           window={page}
           {drawn}
+          fullscreen={fullscreen.has(key)}
+          onfullscreen={(on) => setFullscreen(key, on)}
           onfocus={() => {
             active = key;
             windows.focusShell();
@@ -1222,6 +1346,21 @@
   .floating {
     z-index: 1;
     box-shadow: 0 8px 32px #000a;
+  }
+
+  /* Over the bar, under what opens over windows. */
+  .tile.covering {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    width: 100vw !important;
+    height: 100vh !important;
+    translate: none !important;
+    border-radius: 0;
+  }
+
+  .covering::after {
+    display: none;
   }
 
   .asleep {

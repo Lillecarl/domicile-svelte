@@ -131,6 +131,7 @@
     "Meta+bracketright": () => layout?.consumeOrExpel("right"),
     "Meta+r": () => layout?.cycleWidth(),
     "Meta+f": () => layout?.maximize(),
+    "Meta+Shift+F": () => layout?.toggleFullscreen(),
     "Meta+c": () => layout?.center(),
   };
 
@@ -182,6 +183,11 @@
       usage: "maximize",
       description: "Maximize the active column, or give it back its width.",
       run: () => ran(() => layout?.maximize()),
+    },
+    fullscreen: {
+      usage: "fullscreen",
+      description: "Fill the screen with the active window, or put it back.",
+      run: () => ran(() => layout?.toggleFullscreen()),
     },
     "cycle-width": {
       usage: "cycle-width",

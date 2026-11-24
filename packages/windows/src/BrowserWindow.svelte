@@ -11,6 +11,7 @@
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
+    WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT,
     WEBVIEW_PERMISSION_REQUEST_EVENT,
     WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
@@ -31,8 +32,14 @@
     onmenu,
     onfiles,
     onunload,
+    onfullscreen,
+    fullscreen,
     drawn,
   }: {
+    /** The page or the user asks for fullscreen, or out of it. */
+    onfullscreen: (on: boolean) => void;
+    /** Whether the window fills the screen. */
+    fullscreen: boolean;
     /** The page asks for files, or where to save one: draw a picker and answer it. */
     onfiles: (request: DomicileFileChooserEvent) => void;
     /** Whether to show the page. It runs on while it is not shown, until the engine unloads it. */
@@ -59,7 +66,7 @@
   let request = $state.raw<Request>();
   // The SDK hands the engine's null as undefined. A site opened as an app
   // (`domicile open --app`) is drawn as an application, without one too.
-  const chrome = $derived(browserWindow.popupWindow === undefined && !browserWindow.isApp);
+  const chrome = $derived(!fullscreen && browserWindow.popupWindow === undefined && !browserWindow.isApp);
 
   // The list hands a new object on every change; the view follows the id.
   const id = $derived(browserWindow.id);
@@ -84,6 +91,7 @@
     };
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
     view.addEventListener(WEBVIEW_GUEST_FOCUS_EVENT, () => onfocus());
+    view.addEventListener(WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT, () => onfullscreen(view.pageFullscreen));
     view.addEventListener(WEBVIEW_FOCUS_REQUEST_EVENT, () => onfocusrequest());
     // The page saw the chord first and let it through.
     view.addEventListener(WEBVIEW_GUEST_KEYDOWN_EVENT, (event) => {
@@ -168,6 +176,16 @@
     }
   });
 
+  // A page asks for fullscreen before its window has it: only the window
+  // leaving takes the page out.
+  let wasFullscreen = false;
+  $effect(() => {
+    if (wasFullscreen && !fullscreen && page?.pageFullscreen === true) {
+      page.exitPageFullscreen();
+    }
+    wasFullscreen = fullscreen;
+  });
+
   const blank = (url: string) => url === "" || url === "about:blank";
 
   /** Focus the page, or the address bar while the page is blank. */
@@ -191,6 +209,7 @@
   const bindings: Record<string, () => void> = {
     "Ctrl+l": editAddress,
     "Ctrl+r": () => page?.reload(),
+    F11: () => onfullscreen(!fullscreen),
     "Alt+ArrowLeft": () => page?.goBack(),
     "Alt+ArrowRight": () => page?.goForward(),
   };

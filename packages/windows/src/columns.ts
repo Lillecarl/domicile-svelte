@@ -154,6 +154,10 @@ export const moveWindow = (columns: Columns, id: string, direction: "up" | "down
     return { ...column, windows };
   });
 
+/** `id`'s column maximized, or at its width. */
+export const setFull = (columns: Columns, id: string, full: boolean): Columns =>
+  columns.map((column) => (column.windows.includes(id) ? { ...column, full } : column));
+
 /** `id`'s column maximized, or back to its width. */
 export const toggleFull = (columns: Columns, id: string): Columns =>
   columns.map((column) => (column.windows.includes(id) ? { ...column, full: !column.full } : column));

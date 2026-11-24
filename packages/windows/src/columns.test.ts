@@ -14,6 +14,7 @@ import {
   nextPreset,
   place,
   scrollTo,
+  setFull,
   spans,
   sync,
   toggleFull,
@@ -192,4 +193,12 @@ describe("scrolling", () => {
     expect(filled(-50, strip, view)).toBe(0);
     expect(filled(300, [], view)).toBe(0);
   });
+});
+
+test("a window asks to be maximized, and not to be", () => {
+  const before = of(["a"], ["b"]);
+  const after = setFull(before, "b", true);
+  expect(after.map(({ full }) => full)).toEqual([false, true]);
+  expect(setFull(after, "b", true)).toEqual(after);
+  expect(setFull(after, "b", false)).toEqual(before);
 });
