@@ -11,6 +11,7 @@
     "@domicile-svelte/bar-clock": "workspace:*",
     "@domicile-svelte/bar-extensions": "workspace:*",
     "@domicile-svelte/bar-keymap": "workspace:*",
+    "@domicile-svelte/bar-notifications": "workspace:*",
     "@domicile-svelte/bar-tray": "workspace:*",
     "@domicile-svelte/bar-volume": "workspace:*",
     "@domicile-svelte/bar-window-title": "workspace:*",

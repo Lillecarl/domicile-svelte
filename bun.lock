@@ -54,6 +54,17 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/bar-notifications": {
+      "name": "@domicile-svelte/bar-notifications",
+      "dependencies": {
+        "@domicile-svelte/bar": "workspace:*",
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/bar-tray": {
       "name": "@domicile-svelte/bar-tray",
       "dependencies": {
@@ -145,6 +156,7 @@
         "@domicile-svelte/bar-clock": "workspace:*",
         "@domicile-svelte/bar-extensions": "workspace:*",
         "@domicile-svelte/bar-keymap": "workspace:*",
+        "@domicile-svelte/bar-notifications": "workspace:*",
         "@domicile-svelte/bar-tray": "workspace:*",
         "@domicile-svelte/bar-volume": "workspace:*",
         "@domicile-svelte/bar-window-title": "workspace:*",
@@ -177,6 +189,8 @@
     "@domicile-svelte/bar-extensions": ["@domicile-svelte/bar-extensions@workspace:packages/bar-extensions"],
 
     "@domicile-svelte/bar-keymap": ["@domicile-svelte/bar-keymap@workspace:packages/bar-keymap"],
+
+    "@domicile-svelte/bar-notifications": ["@domicile-svelte/bar-notifications@workspace:packages/bar-notifications"],
 
     "@domicile-svelte/bar-tray": ["@domicile-svelte/bar-tray@workspace:packages/bar-tray"],
 
