@@ -6,6 +6,7 @@
   import Extensions from "@domicile-svelte/bar-extensions";
   import Keymap from "@domicile-svelte/bar-keymap";
   import Notifications from "@domicile-svelte/bar-notifications";
+  import Temperature from "@domicile-svelte/bar-temperature";
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
@@ -269,7 +270,7 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Capturing /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
+    {#snippet right()}<Capturing /><Temperature /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}
