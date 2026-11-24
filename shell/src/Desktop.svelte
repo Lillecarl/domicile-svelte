@@ -10,7 +10,7 @@
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
-  import { Portals } from "@domicile-svelte/portals";
+  import { Capturing, Portals } from "@domicile-svelte/portals";
   import { useDomicile } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
@@ -257,7 +257,7 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
+    {#snippet right()}<Capturing /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}

@@ -8,6 +8,7 @@
   import { useDomicile, watch } from "@domicile-svelte/svelte";
 
   import FileChooser from "./FileChooser.svelte";
+  import ScreenCast from "./ScreenCast.svelte";
 
   const {
     onclose,
@@ -19,15 +20,15 @@
   const { portals } = useDomicile();
   const requests = watch(portals, "change", () => portals.requests ?? []);
 
-  type Chooser = Extract<PortalRequest, { kind: PortalKind.FileChooser }>;
-  const isChooser = (request: PortalRequest): request is Chooser => request.kind === PortalKind.FileChooser;
-  const choosers = $derived(requests.current.filter(isChooser));
-  const shown = $derived(choosers[0]);
+  type Drawn = Extract<PortalRequest, { kind: PortalKind.FileChooser | PortalKind.ScreenCast }>;
+  const drawn = (request: PortalRequest): request is Drawn =>
+    request.kind === PortalKind.FileChooser || request.kind === PortalKind.ScreenCast;
+  const shown = $derived(requests.current.find(drawn));
 
   // Not an inhibitor: that is no question, and the compositor refuses answers to it.
   $effect(() => {
     for (const request of requests.current) {
-      if (request.kind !== PortalKind.FileChooser && request.kind !== PortalKind.Inhibit) {
+      if (!drawn(request) && request.kind !== PortalKind.Inhibit) {
         console.warn("[portals] no dialog for", PortalKind[request.kind], "from", request.appId);
         portals.answer(request.id, PortalAnswer.Refused());
       }
@@ -46,7 +47,12 @@
 </script>
 
 {#if shown !== undefined}
-  {#key shown.id}
-    <FileChooser body={shown.body} answer={(answer) => portals.answer(shown.id, answer)} />
+  {@const { id } = shown}
+  {#key id}
+    {#if shown.kind === PortalKind.FileChooser}
+      <FileChooser body={shown.body} answer={(answer) => portals.answer(id, answer)} />
+    {:else}
+      <ScreenCast appId={shown.appId} body={shown.body} answer={(answer) => portals.answer(id, answer)} />
+    {/if}
   {/key}
 {/if}

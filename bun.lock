@@ -112,6 +112,7 @@
     "packages/portals": {
       "name": "@domicile-svelte/portals",
       "dependencies": {
+        "@domicile-svelte/bar": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
       },
       "peerDependencies": {
