@@ -6,6 +6,7 @@
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
   import {
     WEBVIEW_CONTEXT_MENU_EVENT,
+    WEBVIEW_FILE_CHOOSER_EVENT,
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
@@ -28,9 +29,12 @@
     onfocus,
     onfocusrequest,
     onmenu,
+    onfiles,
     onunload,
     drawn,
   }: {
+    /** The page asks for files, or where to save one: draw a picker and answer it. */
+    onfiles: (request: DomicileFileChooserEvent) => void;
     /** Whether to show the page. It runs on while it is not shown, until the engine unloads it. */
     drawn: boolean;
     /** Unload was chosen: hide the page and free its memory. None, and it is not offered. */
@@ -114,6 +118,11 @@
         ],
       );
       onmenu(entries, box.left + event.x, box.top + event.y);
+    });
+    // Uploads and downloads. Unclaimed, it is canceled.
+    view.addEventListener(WEBVIEW_FILE_CHOOSER_EVENT, (event) => {
+      event.preventDefault();
+      onfiles(event);
     });
     // The browser sends one at a time. Unclaimed, the page gets nothing.
     view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {

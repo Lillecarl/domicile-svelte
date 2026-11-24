@@ -25,8 +25,10 @@
 
 <script lang="ts">
   import type { BrowserWindow as Page } from "@domicile-desktop/sdk/desktop/browser";
+  import { type PortalAnswer, PortalAnswerKind } from "@domicile-desktop/sdk/portal";
   import { PreviewedWindow } from "@domicile-desktop/sdk/previewed-window";
   import { type Entry, Menu } from "@domicile-svelte/menu";
+  import { FileChooser } from "@domicile-svelte/portals";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
   import { MediaQuery, SvelteMap, SvelteSet } from "svelte/reactivity";
@@ -66,6 +68,7 @@
     type Size,
     zoomFor,
   } from "./overview";
+  import { chooserOf } from "./page-files";
   import { popupsOf } from "./popups";
   import Sleeper from "./Sleeper.svelte";
   import { readSession, sessionWriter } from "./session-file";
@@ -792,6 +795,25 @@
   // would place it.
   let menu = $state.raw<{ entries: Entry[]; x: number; y: number }>();
 
+  // What pages ask for files, one shown at a time, oldest first.
+  let choosing = $state.raw<readonly DomicileFileChooserEvent[]>([]);
+  const answerFiles = (request: DomicileFileChooserEvent) => (answer: PortalAnswer) => {
+    choosing = choosing.filter((each) => each !== request);
+    try {
+      if (answer.kind === PortalAnswerKind.FileChooser) {
+        request.choose(answer.chosen.paths);
+      } else {
+        request.cancel();
+      }
+    } catch (error) {
+      // Its page went meanwhile, or it takes no such paths.
+      console.error("[windows] files", error);
+    }
+    if (choosing.length === 0) {
+      refocus();
+    }
+  };
+
   // The overview: the strip's box, drawn smaller by a transform. The windows
   // keep their layout, so no client draws anew, and stay live. A layer over
   // them takes the pointer and the keyboard.
@@ -1041,6 +1063,7 @@
           }}
           onfocusrequest={() => focus(key)}
           onmenu={(entries, x, y) => (menu = { entries, x, y })}
+          onfiles={(request) => (choosing = [...choosing, request])}
           onunload={unloads
             ? () => {
                 active = key;
@@ -1099,6 +1122,13 @@
     ></div>
   {/if}
 </div>
+
+{#if choosing[0] !== undefined}
+  {@const request = choosing[0]}
+  {#key request}
+    <FileChooser body={chooserOf(request)} answer={answerFiles(request)} />
+  {/key}
+{/if}
 
 {#if menu !== undefined}
   {#key menu}

@@ -15,6 +15,7 @@
   "dependencies": {
     "@domicile-svelte/extensions": "workspace:*",
     "@domicile-svelte/menu": "workspace:*",
+    "@domicile-svelte/portals": "workspace:*",
     "@domicile-svelte/svelte": "workspace:*"
   },
   "peerDependencies": {
