@@ -94,6 +94,17 @@
     session.unlock(passphrase);
   };
 
+  // As in swaylock and a terminal's password prompt.
+  const clear = (event: KeyboardEvent) => {
+    const { ctrlKey, altKey, shiftKey, metaKey, key } = event;
+    if (ctrlKey && !altKey && !shiftKey && !metaKey && key.toLowerCase() === "u") {
+      event.preventDefault();
+      if (!pending) {
+        passphrase = "";
+      }
+    }
+  };
+
   const message = $derived(
     refused.current === undefined || refusedAt === 0
       ? undefined
@@ -115,6 +126,7 @@
         <input
           bind:this={input}
           bind:value={passphrase}
+          onkeydown={clear}
           type="password"
           autocomplete="current-password"
           placeholder={pending ? "Checking…" : "Passphrase"}
