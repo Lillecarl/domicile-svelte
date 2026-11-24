@@ -176,8 +176,6 @@
     border-block: 1px solid #313244;
     list-style: none;
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #45475a transparent;
   }
 
   button {

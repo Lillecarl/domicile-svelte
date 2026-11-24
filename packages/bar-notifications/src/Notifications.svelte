@@ -215,8 +215,6 @@
     width: min(400px, calc(100vw - 16px));
     max-height: calc(100vh - var(--bar-height, 32px) - 16px);
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #45475a transparent;
     white-space: normal;
     user-select: text;
     filter: drop-shadow(0 4px 12px #0008);

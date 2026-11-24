@@ -283,6 +283,15 @@
 <Lock background={lockPicture.url ?? lockscreen} onunlock={() => layout?.refocus()} />
 
 <style>
+  :global(:root) {
+    scrollbar-color: #45475a transparent;
+  }
+
+  /* Not inherited, unlike the color. */
+  :global(*) {
+    scrollbar-width: thin;
+  }
+
   .desktop {
     display: flex;
     flex-direction: column;

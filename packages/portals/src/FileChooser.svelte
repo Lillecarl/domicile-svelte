@@ -376,8 +376,6 @@
     padding: 4px;
     list-style: none;
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: #45475a transparent;
   }
 
   .row {
