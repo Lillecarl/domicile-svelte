@@ -67,6 +67,8 @@
     zoomFor,
   } from "./overview";
   import { popupsOf } from "./popups";
+  import Sleeper from "./Sleeper.svelte";
+  import { type Asleep, parseSession, renamed, restored, savedOf, sessionOf, sleeperOf } from "./session";
 
   const {
     width = 1 / 2,
@@ -116,6 +118,145 @@
   // need not draw anew.
   const parkedSizes: Record<string, Size> = {};
   let overview = $state(false);
+  // The last session's pages, until each is opened again.
+  let asleep = $state.raw<Asleep[]>([]);
+  // Asked to open, and not listed yet.
+  const waking = new Map<string, ReturnType<typeof setTimeout>>();
+  // Woken by the shell, so they take no keyboard they did not have.
+  const quiet = new Set<string>();
+  // The windows that held the keyboard, most recent first. A closed one goes;
+  // a parked one stays, for when it is shown again.
+  let history: string[] = [];
+  let present: string[] = [];
+  let seen: Set<string> | undefined;
+
+  const WAKE_LIMIT_MS = 10_000;
+  const wake = (key: string) => {
+    const page = asleep.find((each) => each.key === key);
+    if (page === undefined || waking.has(key)) {
+      return;
+    }
+    // One that never opens may be asked for again.
+    waking.set(
+      key,
+      setTimeout(() => waking.delete(key), WAKE_LIMIT_MS),
+    );
+    const { url, profile, isApp, appId } = page;
+    if (isApp) {
+      browser.openApp(url, { id: appId, profile });
+    } else {
+      browser.open(url, { profile });
+    }
+  };
+
+  const doze = (key: string) => {
+    clearTimeout(waking.get(key));
+    waking.delete(key);
+    asleep = asleep.filter((each) => each.key !== key);
+  };
+
+  // `page`'s window, if it is a sleeping page opened again, takes its place.
+  const adopt = (page: Page) => {
+    const saved = savedOf(page);
+    const asked = asleep.filter(({ key }) => waking.has(key));
+    // Any other window at a sleeping page's address is a new one, but an app
+    // is the app.
+    const apps = asleep.filter(({ isApp, appId }) => isApp && appId !== "");
+    const sleeper = saved === undefined ? undefined : (sleeperOf(asked, saved) ?? sleeperOf(apps, saved));
+    if (sleeper === undefined) {
+      return;
+    }
+    const to = keyOf(page);
+    const from = sleeper.key;
+    const rename = (key: string) => (key === from ? to : key);
+    if (waking.has(from) && active !== from) {
+      quiet.add(to);
+    }
+    doze(from);
+    columns = renamed($state.snapshot(columns) as Columns, from, to);
+    parked = parked.map(rename);
+    present = present.map(rename);
+    history = history.map(rename);
+    if (active === from) {
+      active = to;
+    }
+  };
+
+  // Kept by the engine's profile, so another desktop's is another.
+  const SESSION = "windows.session";
+  let resumed = $state(false);
+  $effect(() => {
+    const current = pages.current;
+    if (current === undefined) {
+      return;
+    }
+    untrack(() => {
+      if (resumed) {
+        for (const page of current) {
+          if (!seen?.has(keyOf(page))) {
+            adopt(page);
+          }
+        }
+        return;
+      }
+      resumed = true;
+      const session = parseSession(localStorage.getItem(SESSION));
+      if (session === undefined) {
+        return;
+      }
+      const open = current.flatMap((page) => {
+        const saved = savedOf(page);
+        return saved === undefined ? [] : [{ key: keyOf(page), page: saved }];
+      });
+      const last = restored(session, open);
+      const placed = new Set(last.columns.flatMap((column) => column.windows));
+      asleep = last.asleep;
+      parked = [...last.parked, ...parked.filter((key) => !last.parked.includes(key))];
+      columns = [
+        ...last.columns,
+        ...($state.snapshot(columns) as Columns)
+          .map((column) => ({ ...column, windows: column.windows.filter((key) => !placed.has(key)) }))
+          .filter((column) => column.windows.length > 0),
+      ];
+      // An app notifies, so it runs whether or not it is looked at.
+      for (const { key, isApp } of asleep) {
+        if (isApp) {
+          wake(key);
+        }
+      }
+    });
+  });
+
+  // A page the focus rests on is opened, not one it passes over.
+  const REST_MS = 300;
+  $effect(() => {
+    const key = active;
+    if (key !== undefined && !overview && asleep.some((each) => each.key === key)) {
+      const timer = setTimeout(() => wake(key), REST_MS);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  });
+
+  const SAVE_MS = 1000;
+  const save = () => {
+    const open = (pages.current ?? []).flatMap((page): Asleep[] => {
+      const saved = savedOf(page);
+      return saved === undefined ? [] : [{ ...saved, key: keyOf(page) }];
+    });
+    const text = JSON.stringify(sessionOf([...open, ...asleep], $state.snapshot(columns) as Columns, parked));
+    if (localStorage.getItem(SESSION) !== text) {
+      localStorage.setItem(SESSION, text);
+    }
+  };
+  $effect(() => {
+    void [pages.current, asleep, columns, parked];
+    if (!resumed) {
+      return undefined;
+    }
+    const timer = setTimeout(save, SAVE_MS);
+    return () => clearTimeout(timer);
+  });
 
   // The effects below read the state they write untracked: tracked, each
   // write would rerun the effect that made it.
@@ -135,9 +276,11 @@
   });
 
   $effect(() => {
-    const open = [...apps.map((window) => window.appId), ...tiledPages.map(keyOf)].filter(
-      (key) => !parked.includes(key),
-    );
+    const open = [
+      ...apps.map((window) => window.appId),
+      ...tiledPages.map(keyOf),
+      ...asleep.map(({ key }) => key),
+    ].filter((key) => !parked.includes(key));
     const at = active;
     columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at, width));
   });
@@ -165,9 +308,6 @@
     }
   });
 
-  // The windows that held the keyboard, most recent first. A closed one goes;
-  // a parked one stays, for when it is shown again.
-  let history: string[] = [];
   $effect(() => {
     const now = active;
     if (now !== undefined) {
@@ -177,9 +317,12 @@
 
   // The active window closed: the keyboard goes to the window that held it
   // before, as a closed tab hands it to the tab used last.
-  let present: string[] = [];
   $effect(() => {
-    const now = [...apps.map((window) => window.appId), ...(pages.current ?? []).map(keyOf)];
+    const now = [
+      ...apps.map((window) => window.appId),
+      ...(pages.current ?? []).map(keyOf),
+      ...asleep.map(({ key }) => key),
+    ];
     untrack(() => {
       const closed = present.filter((key) => !now.includes(key));
       present = now;
@@ -247,12 +390,20 @@
   };
 
   const exists = (key: string) =>
-    apps.some((window) => window.appId === key) || (pages.current ?? []).some((page) => keyOf(page) === key);
+    apps.some((window) => window.appId === key) ||
+    (pages.current ?? []).some((page) => keyOf(page) === key) ||
+    asleep.some((each) => each.key === key);
 
   const focus = (key: string) => {
     // The overview has the keyboard, and hands it to the window it closes on.
     if (overview) {
       active = key;
+      return;
+    }
+    if (asleep.some((each) => each.key === key)) {
+      active = key;
+      releasePage();
+      windows.focusShell();
       return;
     }
     if (!(pages.current ?? []).some((page) => keyOf(page) === key)) {
@@ -272,7 +423,6 @@
   // A page that opens takes the keyboard, as a native window does
   // (focusNewWindows). Pages open when the list first arrives were there
   // before this shell, as after `domicile load-shell`, and are left alone.
-  let seen: Set<string> | undefined;
   $effect(() => {
     const current = pages.current;
     if (current === undefined) {
@@ -280,7 +430,7 @@
     }
     const keys = current.map(keyOf);
     untrack(() => {
-      const fresh = seen === undefined ? [] : keys.filter((key) => !seen?.has(key));
+      const fresh = seen === undefined ? [] : keys.filter((key) => !seen?.has(key) && !quiet.delete(key));
       seen = new Set(keys);
       const last = fresh.at(-1);
       if (last !== undefined) {
@@ -313,6 +463,8 @@
     const page = (pages.current ?? []).find((each) => keyOf(each) === active);
     if (page !== undefined) {
       browser.close(page.id);
+    } else if (active !== undefined && asleep.some(({ key }) => key === active)) {
+      doze(active);
     } else if (active !== undefined && exists(active)) {
       windows.close(active);
     }
@@ -400,8 +552,13 @@
       // An app window's id is its desktop entry's, as croshome writes them.
       app: page.isApp && page.appId !== "" ? page.appId : "browser",
     }));
+    const sleeping = asleep.map(({ key, title, url, isApp, appId }) => ({
+      key,
+      title: title || url,
+      app: isApp && appId !== "" ? appId : "browser",
+    }));
     const order = columns.flatMap((column) => column.windows);
-    return [...native, ...browsers]
+    return [...native, ...browsers, ...sleeping]
       .map((window) => ({ ...window, parked: parked.includes(window.key) }))
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
   };
@@ -431,6 +588,9 @@
 
   // Decoded before it is shown, so its first frame has it.
   const stillOf = async (key: string): Promise<string | undefined> => {
+    if (asleep.some((each) => each.key === key)) {
+      return undefined;
+    }
     const page = (pages.current ?? []).find((each) => keyOf(each) === key);
     const taking = capture
       .preview(page === undefined ? PreviewedWindow.App(key) : PreviewedWindow.Browser(page.id))
@@ -801,6 +961,21 @@
           onmenu={(entries, x, y) => (menu = { entries, x, y })}
         />
         {@render still(key)}
+      </div>
+    {/each}
+    {#each asleep as page (page.key)}
+      {@const box = boxes.get(page.key) ?? parkedBoxes.get(page.key)}
+      <div
+        class="tile"
+        class:hidden={box === undefined}
+        class:active={page.key === active}
+        class:dragged={page.key === drag?.key}
+        bind:this={tiles[page.key]}
+        style:translate={translateOf(page.key, box)}
+        style:width="{box?.width ?? 0}px"
+        style:height="{box?.height ?? 0}px"
+      >
+        <Sleeper {page} onwake={() => focus(page.key)} />
       </div>
     {/each}
     {#if overview && mark !== undefined}
