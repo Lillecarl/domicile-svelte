@@ -6,6 +6,9 @@
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
   import {
     WEBVIEW_CONTEXT_MENU_EVENT,
+    WEBVIEW_DEVICE_REQUEST_CHANGE_EVENT,
+    WEBVIEW_DEVICE_REQUEST_EVENT,
+    WEBVIEW_DEVICE_REQUEST_WITHDRAWN_EVENT,
     WEBVIEW_DIALOG_EVENT,
     WEBVIEW_DIALOG_WITHDRAWN_EVENT,
     WEBVIEW_FILE_CHOOSER_EVENT,
@@ -30,6 +33,7 @@
 
   import { addressOf } from "./address";
   import { type Ask, dialogAsk } from "./ask";
+  import { deviceAsk } from "./device";
   import PageAsk from "./PageAsk.svelte";
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
@@ -209,6 +213,19 @@
       }
     });
     view.addEventListener(WEBVIEW_PROMPT_WITHDRAWN_EVENT, () => asksNo("prompt"));
+    let devices: DomicileDeviceRequestEvent | undefined;
+    view.addEventListener(WEBVIEW_DEVICE_REQUEST_EVENT, (event) => {
+      event.preventDefault();
+      devices = event;
+      asks("device", event, deviceAsk(event));
+    });
+    view.addEventListener(WEBVIEW_DEVICE_REQUEST_CHANGE_EVENT, () => {
+      const event = devices;
+      if (event !== undefined && asking.some((each) => each.event === event)) {
+        asks("device", event, deviceAsk(event));
+      }
+    });
+    view.addEventListener(WEBVIEW_DEVICE_REQUEST_WITHDRAWN_EVENT, () => asksNo("device"));
     // The browser sends one at a time. Unclaimed, the page gets nothing.
     view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
       const asks = asksTo(event.permissions);
