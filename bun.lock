@@ -109,6 +109,16 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/portals": {
+      "name": "@domicile-svelte/portals",
+      "dependencies": {
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/svelte": {
       "name": "@domicile-svelte/svelte",
       "peerDependencies": {
@@ -139,6 +149,7 @@
         "@domicile-svelte/bar-window-title": "workspace:*",
         "@domicile-svelte/launcher": "workspace:*",
         "@domicile-svelte/lock": "workspace:*",
+        "@domicile-svelte/portals": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
         "@domicile-svelte/windows": "workspace:*",
       },
@@ -175,6 +186,8 @@
     "@domicile-svelte/launcher": ["@domicile-svelte/launcher@workspace:packages/launcher"],
 
     "@domicile-svelte/lock": ["@domicile-svelte/lock@workspace:packages/lock"],
+
+    "@domicile-svelte/portals": ["@domicile-svelte/portals@workspace:packages/portals"],
 
     "@domicile-svelte/shell": ["@domicile-svelte/shell@workspace:shell"],
 

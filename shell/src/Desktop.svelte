@@ -10,6 +10,7 @@
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
+  import { Portals } from "@domicile-svelte/portals";
   import { useDomicile } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
 
@@ -266,6 +267,7 @@
     {/key}
   {/if}
 </div>
+<Portals onclose={() => layout?.refocus()} />
 <Lock background={lockscreen} onunlock={() => layout?.refocus()} />
 
 <style>
