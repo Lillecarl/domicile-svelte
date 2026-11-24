@@ -100,7 +100,7 @@
           open: (url) => browser.open(url),
         },
         extensionItemsOf(event),
-        permissionMenu(view.sitePermissions(), (permission, setting) => view.setSitePermission(permission, setting)),
+        permissionsOf(view),
       );
       onmenu(entries, box.left + event.x, box.top + event.y);
     });
@@ -183,6 +183,17 @@
     }
   };
 
+  const permissionsOf = (view: Page) =>
+    permissionMenu(view.sitePermissions(), (permission, setting) => view.setSitePermission(permission, setting));
+
+  const showPermissions = (event: MouseEvent & { currentTarget: HTMLElement }) => {
+    const [menu] = page === undefined ? [] : permissionsOf(page);
+    if (menu?.kind === "item" && menu.submenu !== undefined) {
+      const box = event.currentTarget.getBoundingClientRect();
+      onmenu([...menu.submenu], box.left, box.bottom);
+    }
+  };
+
   const go = (text: string) => {
     const address = addressOf(text);
     if (page === undefined || address === undefined) {
@@ -201,6 +212,16 @@
         go(typed);
       }}
     >
+      <!-- A page may take the right click that opens this menu too. -->
+      <button
+        type="button"
+        title="Site permissions"
+        aria-label="Site permissions"
+        onmousedown={(event) => event.preventDefault()}
+        onclick={showPermissions}
+      >
+        {"\u{f033e}"}
+      </button>
       <input
         bind:this={address}
         bind:value={typed}
@@ -226,7 +247,23 @@
 
   form {
     display: flex;
+    gap: 4px;
     padding: 4px;
+  }
+
+  button {
+    padding: 0 8px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: #a6adc8;
+    font:
+      13px "Hack Nerd Font",
+      monospace;
+  }
+
+  button:hover {
+    background: #313244;
   }
 
   input {
