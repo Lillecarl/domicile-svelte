@@ -38,8 +38,16 @@ type Click = Pick<
 
 const QUOTED = 40;
 
-/** Chrome's menu for a right click in a page, with `extensions`' items before Inspect. */
-export const pageMenu = (click: Click, page: PageActions, extensions: readonly Entry[]): Entry[] => {
+/**
+ * Chrome's menu for a right click in a page, with `extensions`' items before
+ * Inspect, and the `site`'s own under the page's.
+ */
+export const pageMenu = (
+  click: Click,
+  page: PageActions,
+  extensions: readonly Entry[],
+  site: readonly Entry[] = [],
+): Entry[] => {
   const item = (label: string, run: () => void, enabled = true, hint?: string): Entry => ({
     kind: "item",
     key: label,
@@ -110,6 +118,7 @@ export const pageMenu = (click: Click, page: PageActions, extensions: readonly E
           item("Back", page.back, page.canGoBack, "Alt+Left"),
           item("Forward", page.forward, page.canGoForward, "Alt+Right"),
           item("Reload", page.reload, true, "Ctrl+R"),
+          ...site,
         ],
     extensions.map((entry) => ({ ...entry, key: `extension:${entry.key}` })),
     [does("Inspect", "inspect")],

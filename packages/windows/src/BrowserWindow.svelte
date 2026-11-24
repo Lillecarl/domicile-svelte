@@ -10,6 +10,8 @@
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
+    WEBVIEW_PERMISSION_REQUEST_EVENT,
+    WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
   import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
   import type { Entry } from "@domicile-svelte/menu";
@@ -18,6 +20,8 @@
 
   import { addressOf } from "./address";
   import { pageMenu } from "./page-menu";
+  import Permission, { type Request } from "./Permission.svelte";
+  import { asksTo, permissionMenu } from "./permissions";
 
   const {
     window: browserWindow,
@@ -42,6 +46,7 @@
   let address = $state<HTMLInputElement>();
   let page = $state<Page>();
   let typed = $state("");
+  let request = $state.raw<Request>();
   // The SDK hands the engine's null as undefined. A site opened as an app
   // (`domicile open --app`) is drawn as an application, without one too.
   const chrome = $derived(browserWindow.popupWindow === undefined && !browserWindow.isApp);
@@ -95,8 +100,32 @@
           open: (url) => browser.open(url),
         },
         extensionItemsOf(event),
+        permissionMenu(view.sitePermissions(), (permission, setting) => view.setSitePermission(permission, setting)),
       );
       onmenu(entries, box.left + event.x, box.top + event.y);
+    });
+    // The browser sends one at a time. Unclaimed, the page gets nothing.
+    view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
+      const asks = asksTo(event.permissions);
+      if (asks === undefined) {
+        return;
+      }
+      event.preventDefault();
+      const answering = (answer: () => void) => () => {
+        request = undefined;
+        answer();
+        view.focus();
+      };
+      request = {
+        site: event.origin.replace(/^https:\/\//u, ""),
+        asks,
+        allow: answering(() => event.allow()),
+        deny: answering(() => event.deny()),
+        dismiss: answering(() => event.dismiss()),
+      };
+    });
+    view.addEventListener(WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT, () => {
+      request = undefined;
     });
     frame.append(view);
     page = view;
@@ -181,7 +210,9 @@
       />
     </form>
   {/if}
-  <div class="page" bind:this={frame}></div>
+  <div class="page" bind:this={frame}>
+    {#if request !== undefined}<Permission {request} />{/if}
+  </div>
 </div>
 
 <style>
@@ -211,6 +242,7 @@
   }
 
   .page {
+    position: relative;
     flex: 1;
     min-height: 0;
   }
