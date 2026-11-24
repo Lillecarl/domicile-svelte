@@ -57,24 +57,40 @@ export const permissionMenu = (
           key: "permissions",
           label: "Site permissions",
           enabled: true,
-          submenu: known.map((permission): Entry => {
-            const setting = settings[permission] ?? "ask";
-            return {
-              kind: "item",
-              key: permission,
-              label: NAMES[permission],
-              enabled: true,
-              hint: Object.hasOwn(SETTINGS, setting) ? SETTINGS[setting as WebViewPermissionSetting] : setting,
-              submenu: keysOf(SETTINGS).map((choice): Entry => ({
+          submenu: [
+            ...known.map((permission): Entry => {
+              const setting = settings[permission] ?? "ask";
+              return {
                 kind: "item",
-                key: choice,
-                label: SETTINGS[choice],
+                key: permission,
+                label: NAMES[permission],
                 enabled: true,
-                toggle: { kind: "radio", on: choice === setting },
-                run: () => set(permission, choice),
-              })),
-            };
-          }),
+                hint: Object.hasOwn(SETTINGS, setting) ? SETTINGS[setting as WebViewPermissionSetting] : setting,
+                submenu: keysOf(SETTINGS).map((choice): Entry => ({
+                  kind: "item",
+                  key: choice,
+                  label: SETTINGS[choice],
+                  enabled: true,
+                  toggle: { kind: "radio", on: choice === setting },
+                  run: () => set(permission, choice),
+                })),
+              };
+            }),
+            { kind: "separator", key: "reset-separator" },
+            {
+              kind: "item",
+              key: "reset",
+              label: "Reset all",
+              // Also with nothing chosen: the engine then lets a site ask again
+              // that Chrome blocked for unanswered requests.
+              enabled: true,
+              run: () => {
+                for (const permission of known) {
+                  set(permission, "ask");
+                }
+              },
+            },
+          ],
         },
       ];
 };

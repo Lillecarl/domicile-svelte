@@ -24,7 +24,7 @@ test("the menu shows each setting and stores the one picked", () => {
   const set: string[] = [];
   const [root] = permissionMenu({ camera: "block", unknown: "ask" }, (...choice) => set.push(choice.join(" ")));
   const [camera, ...rest] = ((root as Item).submenu ?? []) as Item[];
-  expect(rest).toEqual([]);
+  expect(rest.map(({ key }) => key)).toEqual(["reset-separator", "reset"]);
   expect([camera?.label, camera?.hint]).toEqual(["Camera", "Block"]);
   const choices = (camera?.submenu ?? []) as Item[];
   expect(choices.map(({ label, toggle }) => [label, toggle?.on])).toEqual([
@@ -34,6 +34,15 @@ test("the menu shows each setting and stores the one picked", () => {
   ]);
   choices[1]?.run?.();
   expect(set).toEqual(["camera allow"]);
+});
+
+test("a reset sets every one to ask, those already so too", () => {
+  const set: string[] = [];
+  const [root] = permissionMenu({ camera: "block", location: "ask" }, (...choice) => set.push(choice.join(" ")));
+  const reset = (root as Item).submenu?.at(-1) as Item;
+  expect([reset.label, reset.enabled]).toEqual(["Reset all", true]);
+  reset.run?.();
+  expect(set).toEqual(["camera ask", "location ask"]);
 });
 
 test("a page with no site has no menu", () => {
