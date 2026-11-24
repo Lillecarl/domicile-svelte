@@ -46,7 +46,7 @@
       field.select();
       return;
     }
-    const [first, second] = ask.grants === true ? [".no", ".yes"] : [".yes:enabled", ".no"];
+    const [first, second] = ask.grants === true ? [".no", ".yes:enabled"] : [".yes:enabled", ".no"];
     const target = form?.querySelector<HTMLElement>(first) ?? form?.querySelector<HTMLElement>(second) ?? form;
     target?.focus();
   };

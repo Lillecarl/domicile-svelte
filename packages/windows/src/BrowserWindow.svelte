@@ -11,6 +11,8 @@
     WEBVIEW_DEVICE_REQUEST_WITHDRAWN_EVENT,
     WEBVIEW_DIALOG_EVENT,
     WEBVIEW_DIALOG_WITHDRAWN_EVENT,
+    WEBVIEW_EXTERNAL_APP_EVENT,
+    WEBVIEW_EXTERNAL_APP_WITHDRAWN_EVENT,
     WEBVIEW_FILE_CHOOSER_EVENT,
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
@@ -34,6 +36,7 @@
   import { addressOf } from "./address";
   import { type Ask, dialogAsk } from "./ask";
   import { deviceAsk } from "./device";
+  import { appIn, externalAppAsk } from "./external-app";
   import PageAsk from "./PageAsk.svelte";
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
@@ -74,7 +77,7 @@
     onmenu: (entries: Entry[], x: number, y: number) => void;
   } = $props();
 
-  const { browser, extensions } = useDomicile();
+  const { browser, extensions, processes } = useDomicile();
 
   type Page = HTMLWebViewElement;
 
@@ -213,6 +216,32 @@
       }
     });
     view.addEventListener(WEBVIEW_PROMPT_WITHDRAWN_EVENT, () => asksNo("prompt"));
+    let link: Event | undefined;
+    view.addEventListener(WEBVIEW_EXTERNAL_APP_EVENT, (event) => {
+      event.preventDefault();
+      link = event;
+      processes
+        .run(["domicile", "open", "--which", event.url])
+        .then((ran) =>
+          ran.match({
+            Ok: appIn,
+            Err: (error) => {
+              console.error("[windows] what opens", event.url, error);
+              return undefined;
+            },
+          }),
+        )
+        .then((app) => {
+          if (link === event) {
+            asks("external-app", event, externalAppAsk(event, app));
+          }
+        })
+        .catch((error: unknown) => console.error("[windows] what opens", event.url, error));
+    });
+    view.addEventListener(WEBVIEW_EXTERNAL_APP_WITHDRAWN_EVENT, () => {
+      link = undefined;
+      asksNo("external-app");
+    });
     let devices: DomicileDeviceRequestEvent | undefined;
     view.addEventListener(WEBVIEW_DEVICE_REQUEST_EVENT, (event) => {
       event.preventDefault();

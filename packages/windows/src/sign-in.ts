@@ -136,6 +136,7 @@ export const identityAsk = (event: Identity): Ask => {
       const { no: _, ...alone } = asked;
       return {
         ...alone,
+        grants: false,
         title: `Cannot sign in with ${name}`,
         message: `${name} did not let ${event.site} sign you in. Try again later, or use the site's own sign-in.`,
         extra: event.errorUrl === "" ? [] : [{ label: "More details", run: () => event.moreDetails() }],
