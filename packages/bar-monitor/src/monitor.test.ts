@@ -50,6 +50,25 @@ test("the first sample has no rates, and a counter that went back has none", () 
   expect(sampleOf(at(10, 100), at(12, 50)).has("cores")).toBe(false);
 });
 
+test("pressure is the share of time stalled, by some tasks and by every one", () => {
+  const pressed = (seconds: number, some: number, full: number) =>
+    count(
+      parseFiles(
+        [
+          `/proc/uptime:${seconds}.00 9`,
+          `/proc/pressure/io:some avg10=0.00 avg60=0.00 avg300=0.00 total=${some}`,
+          `/proc/pressure/io:full avg10=0.00 avg60=0.00 avg300=0.00 total=${full}`,
+          `/proc/pressure/irq:full avg10=0.00 avg60=0.00 avg300=0.00 total=${full}`,
+        ].join("\n"),
+      ),
+    );
+  const sample = sampleOf(pressed(10, 0, 0), pressed(12, 1_000_000, 200_000));
+  expect(value(sample, "some", "io")).toBe(50);
+  expect(value(sample, "full", "io")).toBe(10);
+  expect(value(sample, "full", "irq")).toBe(10);
+  expect(sample.get("some")?.values.has("irq")).toBe(false);
+});
+
 test("gauges are read as they are, and an unconnected sensor is left out", () => {
   const sample = sampleOf(undefined, at(10, 0));
   expect(value(sample, "temp hwmon3", "Tctl")).toBe(71.25);

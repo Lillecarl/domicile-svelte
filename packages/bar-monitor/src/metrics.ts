@@ -4,7 +4,7 @@ export type Unit =
 
 export type Chart = {
   id: string;
-  section: "CPU" | "Memory" | "GPU" | "Disks" | "Network" | "System" | "Sensors";
+  section: "CPU" | "Memory" | "Pressure" | "GPU" | "Disks" | "Network" | "System" | "Sensors";
   title: string;
   unit: Unit;
   /** Series drawn on top of each other, adding up. */
@@ -93,7 +93,8 @@ const SENT: Chart = { id: "sent", section: "Network", title: "Sent", unit: "byte
 const PACKETS: Chart = { id: "packets", section: "Network", title: "Packets", unit: "/s" };
 const LOST: Chart = { id: "lost", section: "Network", title: "Errors and drops", unit: "/s" };
 const SOCKETS: Chart = { id: "sockets", section: "Network", title: "Sockets", unit: "count" };
-const PRESSURE: Chart = { id: "pressure", section: "System", title: "Pressure (some stalled)", unit: "percent" };
+const SOME: Chart = { id: "some", section: "Pressure", title: "Some tasks stalled", unit: "percent" };
+const FULL: Chart = { id: "full", section: "Pressure", title: "Every task stalled", unit: "percent" };
 export const TASKS: Chart = { id: "tasks", section: "System", title: "Tasks", unit: "count" };
 const RUNNING: Chart = { id: "running", section: "System", title: "Running and blocked", unit: "count" };
 const EVENTS: Chart = { id: "events", section: "System", title: "Context switches and interrupts", unit: "/s" };
@@ -103,7 +104,7 @@ const BATTERY: Chart = { id: "battery", section: "System", title: "Battery", uni
 
 const CHARTS = [
   ...[CPU, CORES, FREQUENCY, LOAD, MEMORY, SWAP, GPU, GPU_FREQUENCY, VRAM, READ, WRITTEN, OPERATIONS, BUSY],
-  ...[RECEIVED, SENT, PACKETS, LOST, SOCKETS, PRESSURE, TASKS, RUNNING, EVENTS, FORKS, OPEN_FILES, BATTERY],
+  ...[RECEIVED, SENT, PACKETS, LOST, SOCKETS, SOME, FULL, TASKS, RUNNING, EVENTS, FORKS, OPEN_FILES, BATTERY],
 ].map(({ id }) => id);
 
 /** Sorts charts as listed above, then the sensors by chip. */
@@ -255,11 +256,11 @@ export const count = (files: Files): Counts => {
   }
 
   for (const { found } of matching(/^\/proc\/pressure\/(\w+)$/)) {
-    const some = lines(found[0]).find((line) => line.startsWith("some "));
-    const total = /total=(\d+)/.exec(some ?? "")?.[1];
-    counter(PRESSURE, found[1] ?? "", total === undefined ? undefined : Number(total), (each) =>
-      Math.min(100, each / 10_000),
-    );
+    for (const line of lines(found[0])) {
+      // In microseconds. The kernel's own averages lag: the shortest is 10 s.
+      const total = Number(/total=(\d+)/.exec(line)?.[1]);
+      counter(line.startsWith("some ") ? SOME : FULL, found[1] ?? "", total, (each) => Math.min(100, each / 10_000));
+    }
   }
   gauge(OPEN_FILES, "open", numbers(lines("/proc/sys/fs/file-nr")[0] ?? "")[0]);
   for (const { found, text } of matching(/^\/sys\/class\/power_supply\/([^/]+)\/capacity$/)) {

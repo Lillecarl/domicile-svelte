@@ -31,7 +31,16 @@
     };
   });
 
-  const SECTIONS: readonly Chart["section"][] = ["CPU", "Memory", "GPU", "Disks", "Network", "System", "Sensors"];
+  const SECTIONS: readonly Chart["section"][] = [
+    "CPU",
+    "Memory",
+    "Pressure",
+    "GPU",
+    "Disks",
+    "Network",
+    "System",
+    "Sensors",
+  ];
   const SPANS = [
     { label: "2 min", seconds: 120 },
     { label: "10 min", seconds: 600 },
