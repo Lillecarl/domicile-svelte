@@ -532,6 +532,26 @@
     }
   };
 
+  // The desktop an older engine hands a shell has no such call.
+  const unloads = "discard" in browser;
+  // Longer than the engine takes to hide a page, and it unloads only a hidden one.
+  const HIDDEN_MS = 1000;
+
+  /** Park the active window, and free its page's memory until it is shown. */
+  export const unload = () => {
+    const page = (pages.current ?? []).find((each) => keyOf(each) === active);
+    if (page === undefined || !unloads) {
+      return;
+    }
+    const key = keyOf(page);
+    park();
+    setTimeout(() => {
+      if (parked.includes(key)) {
+        browser.discard(page.id);
+      }
+    }, HIDDEN_MS);
+  };
+
   /** Bring `key` back, parked or not, and give it the keyboard. */
   export const show = async (key: string) => {
     overview = false;
@@ -959,6 +979,12 @@
           }}
           onfocusrequest={() => focus(key)}
           onmenu={(entries, x, y) => (menu = { entries, x, y })}
+          onunload={unloads
+            ? () => {
+                active = key;
+                unload();
+              }
+            : undefined}
         />
         {@render still(key)}
       </div>

@@ -28,7 +28,10 @@
     onfocus,
     onfocusrequest,
     onmenu,
+    onunload,
   }: {
+    /** Unload was chosen: hide the page and free its memory. None, and it is not offered. */
+    onunload: (() => void) | undefined;
     window: BrowserWindow;
     /** The page or the address bar took focus. */
     onfocus: () => void;
@@ -100,7 +103,12 @@
           open: (url) => browser.open(url),
         },
         extensionItemsOf(event),
-        permissionsOf(view),
+        [
+          ...permissionsOf(view),
+          ...(onunload === undefined
+            ? []
+            : [{ kind: "item" as const, key: "unload", label: "Unload", enabled: true, run: onunload }]),
+        ],
       );
       onmenu(entries, box.left + event.x, box.top + event.y);
     });
