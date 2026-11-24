@@ -63,17 +63,17 @@
       // The picker takes the keyboard, and asks about windows this covers.
       open = false;
     }
+    // Shown again with the reason, which also takes the keyboard back up.
+    const refused = (why: string) => {
+      failed = { id: target.id, why };
+      open = !locked.current;
+    };
     try {
       const started = await desk.start(backend, target, mode);
-      started.match({
-        Ok: () => undefined,
-        Err: (why) => {
-          failed = { id: target.id, why };
-          open = true;
-        },
-      });
+      started.match({ Ok: () => undefined, Err: refused });
     } catch (error) {
       console.error("could not cast to", target.name, error);
+      refused(String(error));
     } finally {
       starting = undefined;
     }
