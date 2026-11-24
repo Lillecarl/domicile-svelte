@@ -6,12 +6,14 @@
     children,
     title,
     onclick,
+    onauxclick,
     oncontextmenu,
     onwheel,
   }: {
     children: Snippet;
     title?: string;
     onclick?: (event: MouseEvent) => void;
+    onauxclick?: (event: MouseEvent) => void;
     oncontextmenu?: (event: MouseEvent) => void;
     onwheel?: (event: WheelEvent) => void;
   } = $props();
@@ -20,7 +22,7 @@
 {#if onclick === undefined && oncontextmenu === undefined && onwheel === undefined}
   <span class="item" {title}>{@render children()}</span>
 {:else}
-  <button class="item" type="button" {title} {onclick} {oncontextmenu} {onwheel}>{@render children()}</button>
+  <button class="item" type="button" {title} {onclick} {onauxclick} {oncontextmenu} {onwheel}>{@render children()}</button>
 {/if}
 
 <style>

@@ -269,7 +269,7 @@
   <Bar>
     {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
-    {#snippet right()}<Capturing /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
+    {#snippet right()}<Capturing /><Volume /><Extensions onclose={() => layout?.refocus()} /><Tray icon={apps.icon} onclose={() => layout?.refocus()} /><Notifications bind:this={notifications} onclose={() => layout?.refocus()} /><Clock />{/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} />
   {#if launcher !== undefined}

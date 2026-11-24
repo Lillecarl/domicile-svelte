@@ -69,6 +69,7 @@
       "name": "@domicile-svelte/bar-tray",
       "dependencies": {
         "@domicile-svelte/bar": "workspace:*",
+        "@domicile-svelte/menu": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
       },
       "peerDependencies": {
@@ -112,6 +113,16 @@
     },
     "packages/lock": {
       "name": "@domicile-svelte/lock",
+      "dependencies": {
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
+    "packages/menu": {
+      "name": "@domicile-svelte/menu",
       "dependencies": {
         "@domicile-svelte/svelte": "workspace:*",
       },
@@ -201,6 +212,8 @@
     "@domicile-svelte/launcher": ["@domicile-svelte/launcher@workspace:packages/launcher"],
 
     "@domicile-svelte/lock": ["@domicile-svelte/lock@workspace:packages/lock"],
+
+    "@domicile-svelte/menu": ["@domicile-svelte/menu@workspace:packages/menu"],
 
     "@domicile-svelte/portals": ["@domicile-svelte/portals@workspace:packages/portals"],
 

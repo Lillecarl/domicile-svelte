@@ -1,9 +1,13 @@
 {
   "name": "@domicile-svelte/bar-tray",
-  "description": "The system tray: StatusNotifierItem icons. Click to activate, right-click for the secondary action.",
+  "description": "The system tray: StatusNotifierItem icons. Click to activate, right-click for the menu.",
   "type": "module",
   "exports": { ".": { "svelte": "./src/Tray.svelte", "default": "./src/Tray.svelte" } },
-  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json" },
-  "dependencies": { "@domicile-svelte/bar": "workspace:*", "@domicile-svelte/svelte": "workspace:*" },
+  "scripts": { "check": "svelte-check --tsconfig ./tsconfig.json", "test": "bun test" },
+  "dependencies": {
+    "@domicile-svelte/bar": "workspace:*",
+    "@domicile-svelte/menu": "workspace:*",
+    "@domicile-svelte/svelte": "workspace:*"
+  },
   "peerDependencies": { "@domicile-desktop/sdk": "^2.2.0", "svelte": "^5.59.1" }
 }
