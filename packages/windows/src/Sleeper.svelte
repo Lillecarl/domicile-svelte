@@ -1,8 +1,6 @@
-<!-- A page of the last session that has not been opened again yet. -->
+<!-- A page that is not loaded: unloaded to free its memory, or of the last session. -->
 <script lang="ts">
-  import type { SavedPage } from "./session";
-
-  const { page, onwake }: { page: SavedPage; onwake: () => void } = $props();
+  const { page, onwake }: { page: { url: string; title: string }; onwake: () => void } = $props();
 
   const host = $derived(URL.canParse(page.url) ? new URL(page.url).hostname : page.url);
 </script>

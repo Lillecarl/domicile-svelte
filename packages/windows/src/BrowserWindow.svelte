@@ -29,7 +29,10 @@
     onfocusrequest,
     onmenu,
     onunload,
+    drawn,
   }: {
+    /** Whether to show the page. It runs on while it is not shown, until the engine unloads it. */
+    drawn: boolean;
     /** Unload was chosen: hide the page and free its memory. None, and it is not offered. */
     onunload: (() => void) | undefined;
     window: BrowserWindow;
@@ -138,13 +141,18 @@
     frame.append(view);
     page = view;
     changed();
-    return () => view.remove();
+    return () => {
+      view.remove();
+      page = undefined;
+      // A view hears of no more; the browser asks the next one again.
+      request = undefined;
+    };
   };
 
   // Untracked past `frame` and `id`: anything else read here would remake the
   // view, and the page with it.
   $effect(() => {
-    if (frame !== undefined) {
+    if (frame !== undefined && drawn) {
       const target = frame;
       const window = id;
       return untrack(() => mountView(target, window));

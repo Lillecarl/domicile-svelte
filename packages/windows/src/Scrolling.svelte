@@ -29,7 +29,7 @@
   import { type Entry, Menu } from "@domicile-svelte/menu";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
-  import { MediaQuery, SvelteMap } from "svelte/reactivity";
+  import { MediaQuery, SvelteMap, SvelteSet } from "svelte/reactivity";
 
   import BrowserWindow from "./BrowserWindow.svelte";
   import {
@@ -68,6 +68,7 @@
   } from "./overview";
   import { popupsOf } from "./popups";
   import Sleeper from "./Sleeper.svelte";
+  import { readSession, sessionWriter } from "./session-file";
   import { type Asleep, parseSession, renamed, restored, savedOf, sessionOf, sleeperOf } from "./session";
 
   const {
@@ -75,9 +76,12 @@
     presets = [1 / 3, 1 / 2, 2 / 3],
     gap = 8,
     settle = 220,
+    letGoAfter = 5 * 60_000,
   }: {
     /** How long a tile takes to ease into a new box, in milliseconds. */
     settle?: number;
+    /** How long a page is out of view before the engine may unload it, in milliseconds. */
+    letGoAfter?: number;
     /** A new column's width, as a proportion of the view's. */
     width?: number;
     /** The widths `cycleWidth` steps through, narrowest first. */
@@ -85,7 +89,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, capture, extensions, windows } = useDomicile();
+  const { browser, capture, extensions, files, session: lock, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const pages = watch(browser, "change", () => browser.windows);
@@ -182,12 +186,17 @@
     }
   };
 
-  // Kept by the engine's profile, so another desktop's is another.
-  const SESSION = "windows.session";
+  // A session that cannot be read is not written over.
+  let kept = $state.raw<{ text: string | null }>();
+  readSession(files, lock)
+    .then((text) => (kept = { text }))
+    .catch((error: unknown) => console.error("[windows] session", error));
+  const write = sessionWriter(files, lock, (error) => console.error("[windows] session", error));
   let resumed = $state(false);
   $effect(() => {
     const current = pages.current;
-    if (current === undefined) {
+    const text = kept?.text;
+    if (current === undefined || text === undefined) {
       return;
     }
     untrack(() => {
@@ -200,7 +209,7 @@
         return;
       }
       resumed = true;
-      const session = parseSession(localStorage.getItem(SESSION));
+      const session = parseSession(text);
       if (session === undefined) {
         return;
       }
@@ -244,10 +253,7 @@
       const saved = savedOf(page);
       return saved === undefined ? [] : [{ ...saved, key: keyOf(page) }];
     });
-    const text = JSON.stringify(sessionOf([...open, ...asleep], $state.snapshot(columns) as Columns, parked));
-    if (localStorage.getItem(SESSION) !== text) {
-      localStorage.setItem(SESSION, text);
-    }
+    write(JSON.stringify(sessionOf([...open, ...asleep], $state.snapshot(columns) as Columns, parked)));
   };
   $effect(() => {
     void [pages.current, asleep, columns, parked];
@@ -296,6 +302,54 @@
     const view = viewWidth;
     if (view > 0 && !overview) {
       scroll = untrack(() => filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
+    }
+  });
+
+  // The engine unloads a page only while no view shows it. One out of view for
+  // this long is let go: it runs on, and is drawn again when it is in view.
+  // The desktop an older engine hands a shell has no such call.
+  const unloads = "discard" in browser;
+  const letGo = new SvelteSet<string>();
+  const inView = (key: string) => {
+    const box = boxes.get(key);
+    return box !== undefined && box.x < scroll + viewWidth && box.x + box.width > scroll;
+  };
+  const isDrawn = (page: Page, floating: boolean) => {
+    const key = keyOf(page);
+    if (page.isCaptured || (!overview && (inView(key) || (floating && !parked.includes(key))))) {
+      return true;
+    }
+    // The overview shows every page that runs, and wakes none that does not.
+    return page.isDiscarded !== true && (overview || !letGo.has(key));
+  };
+  const leaving = new Map<string, ReturnType<typeof setTimeout>>();
+  $effect(() => {
+    if (!unloads) {
+      return;
+    }
+    const open = new Set<string>();
+    for (const page of pages.current ?? []) {
+      const key = keyOf(page);
+      open.add(key);
+      const shown = inView(key) || (floats(page) && !parked.includes(key));
+      if (shown) {
+        clearTimeout(leaving.get(key));
+        leaving.delete(key);
+        // After the focus that brought it into view, which looks here.
+        void tick().then(() => letGo.delete(key));
+      } else if (!leaving.has(key)) {
+        leaving.set(
+          key,
+          setTimeout(() => letGo.add(key), letGoAfter),
+        );
+      }
+    }
+    for (const [key, timer] of leaving) {
+      if (!open.has(key)) {
+        clearTimeout(timer);
+        leaving.delete(key);
+        letGo.delete(key);
+      }
     }
   });
 
@@ -406,7 +460,8 @@
       windows.focusShell();
       return;
     }
-    if (!(pages.current ?? []).some((page) => keyOf(page) === key)) {
+    const page = (pages.current ?? []).find((each) => keyOf(each) === key);
+    if (page === undefined) {
       releasePage();
       windows.focus(key);
       return;
@@ -414,9 +469,15 @@
     // A page that closed before its frame mounted, as a popup can, has none.
     const frame = frames[key];
     if (frame !== undefined && frame !== null) {
+      const drawn = isDrawn(page, floats(page));
       active = key;
       windows.focusShell();
-      frame.focus();
+      if (!drawn) {
+        // Its page is drawn on the next render.
+        void tick().then(() => frame.focus());
+      } else {
+        frame.focus();
+      }
     }
   };
 
@@ -532,9 +593,7 @@
     }
   };
 
-  // The desktop an older engine hands a shell has no such call.
-  const unloads = "discard" in browser;
-  // Longer than the engine takes to hide a page, and it unloads only a hidden one.
+  // Longer than the engine takes to hear that no view shows a page.
   const HIDDEN_MS = 1000;
 
   /** Park the active window, and free its page's memory until it is shown. */
@@ -545,6 +604,7 @@
     }
     const key = keyOf(page);
     park();
+    letGo.add(key);
     setTimeout(() => {
       if (parked.includes(key)) {
         browser.discard(page.id);
@@ -959,6 +1019,7 @@
       {@const floating = floats(page)}
       {@const isParked = parked.includes(key)}
       {@const box = isParked ? parkedBoxes.get(key) : floating ? floatBox(page) : boxes.get(key)}
+      {@const drawn = isDrawn(page, floating)}
       <div
         class="tile"
         class:floating
@@ -973,6 +1034,7 @@
         <BrowserWindow
           bind:this={frames[key]}
           window={page}
+          {drawn}
           onfocus={() => {
             active = key;
             windows.focusShell();
@@ -986,6 +1048,9 @@
               }
             : undefined}
         />
+        {#if page.isDiscarded && !drawn}
+          <div class="asleep"><Sleeper {page} onwake={() => focus(key)} /></div>
+        {/if}
         {@render still(key)}
       </div>
     {/each}
@@ -1127,6 +1192,11 @@
   .floating {
     z-index: 1;
     box-shadow: 0 8px 32px #000a;
+  }
+
+  .asleep {
+    position: absolute;
+    inset: 0;
   }
 
   /* Over the window: a native window is a layer that would cover an inset

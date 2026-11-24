@@ -155,6 +155,8 @@
   // How long tiles take to ease into a new box; `settle-ms` slows it down to
   // watch it.
   let settle = $state(220);
+  // `let-go-ms`, as `settle-ms`.
+  let letGoAfter = $state(5 * 60_000);
 
   // `domicile send-shell <command>...`: the layout actions by name, as niri
   // msg has them, for scripts and for testing without the keyboard.
@@ -244,6 +246,16 @@
       description: "Open the system monitor, or close it.",
       run: () => ran(() => monitor?.toggle()),
     },
+    "let-go-ms": {
+      usage: "let-go-ms <ms>",
+      description: "Set how long a page is out of view before it may be unloaded.",
+      run: ([ms]) => {
+        const value = Number(ms);
+        return Number.isFinite(value) && value >= 0
+          ? ran(() => (letGoAfter = value))
+          : Err("let-go-ms takes a number of milliseconds");
+      },
+    },
     "settle-ms": {
       usage: "settle-ms <ms>",
       description: "Set how long tiles take to ease into a new box.",
@@ -313,7 +325,7 @@
       <Clock />
     {/snippet}
   </Bar>
-  <Scrolling bind:this={layout} {settle} />
+  <Scrolling bind:this={layout} {settle} {letGoAfter} />
   {#if launcher !== undefined}
     <!-- Opened again, it starts from an empty query. -->
     {#key launcher}
