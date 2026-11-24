@@ -282,6 +282,8 @@
       // A parked app that takes the keyboard (one asked to open again) comes
       // back.
       untrack(() => {
+        // A window that takes the keyboard by itself, as one that opens.
+        releasePage();
         overview = false;
         if (parked.includes(now)) {
           parked = parked.filter((key) => key !== now);
