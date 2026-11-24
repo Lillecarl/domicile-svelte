@@ -66,6 +66,7 @@
     type Size,
     zoomFor,
   } from "./overview";
+  import { popupsOf } from "./popups";
 
   const {
     width = 1 / 2,
@@ -91,7 +92,7 @@
   const keyOf = (page: Page) => `browser:${page.id}`;
   const floats = (page: Page) => page.width > 0 || page.height > 0;
 
-  // Menus and tooltips have a parent; the engine draws them with it.
+  // Menus and tooltips have a parent, and are drawn over it.
   const apps = $derived(list.current.filter((window) => window.parent === undefined));
   const tiledPages = $derived((pages.current ?? []).filter((page) => !floats(page)));
 
@@ -735,9 +736,11 @@
   >
     {#each apps as window (window.appId)}
       {@const box = boxes.get(window.appId) ?? parkedBoxes.get(window.appId)}
+      {@const popups = popupsOf(list.current, window.appId)}
       <div
-        class="tile"
+        class="tile native"
         class:hidden={box === undefined}
+        class:menu={popups.some((popup) => popup.window.grab)}
         class:active={window.appId === active}
         class:dragged={window.appId === drag?.key}
         bind:this={tiles[window.appId]}
@@ -745,8 +748,21 @@
         style:width="{box?.width ?? 0}px"
         style:height="{box?.height ?? 0}px"
       >
-        <app app-id={window.appId}></app>
-        {@render still(window.appId)}
+        <div class="contents">
+          <app app-id={window.appId} style:cursor={window.cursorImage ?? window.cursor}></app>
+          {@render still(window.appId)}
+        </div>
+        {#each popups as popup (popup.window.appId)}
+          <app
+            class="popup"
+            app-id={popup.window.appId}
+            style:left="{popup.x}px"
+            style:top="{popup.y}px"
+            style:width="{popup.window.width}px"
+            style:height="{popup.window.height}px"
+            style:cursor={popup.window.cursorImage ?? popup.window.cursor}
+          ></app>
+        {/each}
       </div>
     {/each}
     {#each pages.current ?? [] as page (page.id)}
@@ -868,6 +884,28 @@
     overflow: hidden;
     /* The settle's transform scales and moves from the tile's corner. */
     transform-origin: 0 0;
+  }
+
+  /* Only its contents are clipped: a menu may reach past its window. */
+  .native {
+    overflow: visible;
+  }
+
+  .contents {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    overflow: hidden;
+  }
+
+  .popup {
+    position: absolute;
+    z-index: 2;
+  }
+
+  /* Over its neighbors, and over floating windows. */
+  .menu {
+    z-index: 2;
   }
 
   /* Not placed yet. A page under display: none stays mounted, as a
