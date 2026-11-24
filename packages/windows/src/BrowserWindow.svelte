@@ -12,10 +12,16 @@
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
+    WEBVIEW_IDENTITY_EVENT,
+    WEBVIEW_IDENTITY_WITHDRAWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
     WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT,
     WEBVIEW_PERMISSION_REQUEST_EVENT,
     WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT,
+    WEBVIEW_PROMPT_EVENT,
+    WEBVIEW_PROMPT_WITHDRAWN_EVENT,
+    WEBVIEW_SIGN_IN_EVENT,
+    WEBVIEW_SIGN_IN_WITHDRAWN_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
   import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
   import type { Entry } from "@domicile-svelte/menu";
@@ -28,6 +34,8 @@
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
   import { asksTo, permissionMenu } from "./permissions";
+  import { promptAsk } from "./prompt";
+  import { identityAsk, signInAsk } from "./sign-in";
 
   const {
     window: browserWindow,
@@ -89,16 +97,19 @@
       : [...asking.filter((each) => each.kind !== kind), next];
   };
   const asksNo = (kind: string) => {
+    const had = hasKeyboard();
     asking = asking.filter((each) => each.kind !== kind);
-    regain();
+    regain(had);
   };
-  // The keyboard back to the page, if its window has it.
-  const regain = () => {
-    if (active) {
+  const hasKeyboard = () => frame?.contains(document.activeElement) === true;
+  // The keyboard back to the page, if what asked had it.
+  const regain = (had: boolean) => {
+    if (active && had) {
       void tick().then(focus);
     }
   };
   const answered = (event: Event, answer: () => void) => {
+    const had = hasKeyboard();
     // Still asked while it is answered: the answer reads it.
     try {
       answer();
@@ -107,7 +118,7 @@
       console.error("[windows] answer", error);
     }
     asking = asking.filter((each) => each.event !== event);
-    regain();
+    regain(had);
   };
 
   const mountView = (frame: HTMLElement, id: string) => {
@@ -180,6 +191,24 @@
       }
     });
     view.addEventListener(WEBVIEW_DIALOG_WITHDRAWN_EVENT, () => asksNo("dialog"));
+    view.addEventListener(WEBVIEW_SIGN_IN_EVENT, (event) => {
+      event.preventDefault();
+      asks("sign-in", event, signInAsk(event));
+    });
+    view.addEventListener(WEBVIEW_SIGN_IN_WITHDRAWN_EVENT, () => asksNo("sign-in"));
+    view.addEventListener(WEBVIEW_IDENTITY_EVENT, (event) => {
+      event.preventDefault();
+      asks("identity", event, identityAsk(event));
+    });
+    view.addEventListener(WEBVIEW_IDENTITY_WITHDRAWN_EVENT, () => asksNo("identity"));
+    view.addEventListener(WEBVIEW_PROMPT_EVENT, (event) => {
+      const ask = promptAsk(event);
+      if (ask !== undefined) {
+        event.preventDefault();
+        asks("prompt", event, ask);
+      }
+    });
+    view.addEventListener(WEBVIEW_PROMPT_WITHDRAWN_EVENT, () => asksNo("prompt"));
     // The browser sends one at a time. Unclaimed, the page gets nothing.
     view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
       const asks = asksTo(event.permissions);
