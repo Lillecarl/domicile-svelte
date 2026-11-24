@@ -54,10 +54,18 @@
     // shows in one view at a time: create it here, once, attribute first.
     const view = document.createElement("webview") as Page;
     view.setAttribute("window", id);
+    let shown = "";
     const changed = () => {
-      if (document.activeElement !== address) {
+      // A window opened at a URL is blank at first, so its bar took the focus.
+      const loaded = blank(shown) && !blank(view.url) && typed === shown;
+      const editing = document.activeElement === address;
+      if (!editing || loaded) {
         typed = view.url;
       }
+      if (editing && loaded) {
+        view.focus();
+      }
+      shown = view.url;
     };
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
     view.addEventListener(WEBVIEW_GUEST_FOCUS_EVENT, () => onfocus());
