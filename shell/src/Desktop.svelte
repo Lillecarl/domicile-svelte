@@ -179,6 +179,7 @@
     "Meta+f": () => layout?.maximize(),
     "Meta+Shift+F": () => layout?.toggleFullscreen(),
     "Meta+c": () => layout?.center(),
+    "Meta+Shift+P": () => logged("turning the monitors off", domicile.displays.sleep()),
     Print: () => logged("screenshot", domicile.capture.screenshot()),
     "Shift+Print": () => logged("recording", domicile.capture.screenRecord()),
   };
