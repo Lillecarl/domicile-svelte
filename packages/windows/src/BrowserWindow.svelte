@@ -39,6 +39,7 @@
   import { type Ask, dialogAsk } from "./ask";
   import { deviceAsk } from "./device";
   import { appIn, externalAppAsk } from "./external-app";
+  import Find from "./Find.svelte";
   import PageAsk from "./PageAsk.svelte";
   import PagePicker from "./PagePicker.svelte";
   import { pageMenu } from "./page-menu";
@@ -91,6 +92,8 @@
   let request = $state.raw<Request>();
   // What the page asks, oldest first; the engine sends one of a kind at a time.
   let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
+  let finding = $state(false);
+  let finder = $state<ReturnType<typeof Find> | null>();
   let picking = $state.raw<DomicilePickerEvent>();
   let picker = $state<ReturnType<typeof PagePicker> | null>();
   let shown = $state<ReturnType<typeof PageAsk>>();
@@ -308,6 +311,7 @@
       request = undefined;
       asking = [];
       picking = undefined;
+      finding = false;
     };
   };
 
@@ -357,6 +361,10 @@
   // The guest has none of Chrome's own keys.
   const bindings: Record<string, () => void> = {
     "Ctrl+l": editAddress,
+    "Ctrl+f": () => {
+      finding = true;
+      finder?.focus();
+    },
     "Ctrl+r": () => page?.reload(),
     F11: () => onfullscreen(!fullscreen),
     "Alt+ArrowLeft": () => page?.goBack(),
@@ -426,6 +434,16 @@
   {/if}
   <div class="page" bind:this={frame}>
     {#if request !== undefined}<Permission {request} />{/if}
+    {#if finding && page !== undefined}
+      <Find
+        bind:this={finder}
+        view={page}
+        onclose={() => {
+          finding = false;
+          page?.focus();
+        }}
+      />
+    {/if}
     {#if picking !== undefined}
       {@const event = picking}
       {#key event}
