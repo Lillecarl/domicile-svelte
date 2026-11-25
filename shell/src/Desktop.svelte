@@ -26,6 +26,7 @@
   // potrace, a layer per color, from swaylock's picture in croshome
   // (hosts/shitbox/lockscreen.jpg), so it is sharp at any size.
   import lockscreen from "./assets/lockscreen.svg?inline";
+  import { type Swipe, swipes } from "./swipes";
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
@@ -201,6 +202,32 @@
       unlisten();
       for (const chord of Object.keys(bindings)) {
         domicile.keyboard.ungrab(chord);
+      }
+    };
+  });
+
+  // niri's: the view and the windows move with the fingers.
+  const swiped = ({ fingers, direction }: Swipe) => {
+    if (fingers === 4) {
+      if (layout !== undefined && (direction === "up" || direction === "down")) {
+        layout.setOverview(direction === "up");
+      }
+    } else if (direction === "up" || direction === "down") {
+      layout?.focusWorkspace(direction === "up" ? "down" : "up");
+    } else {
+      layout?.move(direction === "left" ? "right" : "left");
+    }
+  };
+  $effect(() => {
+    const grabbed = ["swipe:3", "swipe:4"];
+    for (const gesture of grabbed) {
+      domicile.gestures.grab(gesture);
+    }
+    const unlisten = domicile.gestures.on("gesture", swipes(swiped));
+    return () => {
+      unlisten();
+      for (const gesture of grabbed) {
+        domicile.gestures.ungrab(gesture);
       }
     };
   });

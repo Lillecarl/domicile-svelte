@@ -1261,6 +1261,13 @@
     }
   };
 
+  /** Open or close the overview. */
+  export const setOverview = (open: boolean) => {
+    if (open !== overview) {
+      toggleOverview();
+    }
+  };
+
   let drag = $state<{ key: string; from: { x: number; y: number }; by: { x: number; y: number } }>();
   // Into a workspace, by its id, when it is empty.
   let dropping = $state<Drop | "park" | number>();
