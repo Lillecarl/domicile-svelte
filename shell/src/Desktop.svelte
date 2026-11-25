@@ -69,13 +69,16 @@
   let monitor = $state<ReturnType<typeof Monitor>>();
   let notifications = $state<ReturnType<typeof Notifications>>();
 
-  let launcher = $state<{ sources: Source[]; placeholder: string }>();
+  // Kept while closed: the launcher still reads its sources as it goes.
+  let launcher = $state.raw<{ sources: Source[]; placeholder: string }>({ sources: [], placeholder: "" });
+  let isLauncherOpen = $state(false);
   const openLauncher = (sources: Source[], placeholder: string) => {
     launcher = { sources, placeholder };
+    isLauncherOpen = true;
   };
   const closeLauncher = () => {
-    if (launcher !== undefined) {
-      launcher = undefined;
+    if (isLauncherOpen) {
+      isLauncherOpen = false;
       layout?.refocus();
     }
   };
@@ -332,7 +335,7 @@
     {/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} {letGoAfter} />
-  {#if launcher !== undefined}
+  {#if isLauncherOpen}
     <!-- Opened again, it starts from an empty query. -->
     {#key launcher}
       <Launcher sources={launcher.sources} placeholder={launcher.placeholder} onclose={closeLauncher} />
