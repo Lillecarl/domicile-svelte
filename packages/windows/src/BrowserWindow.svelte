@@ -23,6 +23,8 @@
     WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT,
     WEBVIEW_PERMISSION_REQUEST_EVENT,
     WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT,
+    WEBVIEW_PICKER_EVENT,
+    WEBVIEW_PICKER_WITHDRAWN_EVENT,
     WEBVIEW_PROMPT_EVENT,
     WEBVIEW_PROMPT_WITHDRAWN_EVENT,
     WEBVIEW_SIGN_IN_EVENT,
@@ -38,6 +40,7 @@
   import { deviceAsk } from "./device";
   import { appIn, externalAppAsk } from "./external-app";
   import PageAsk from "./PageAsk.svelte";
+  import PagePicker from "./PagePicker.svelte";
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
   import { asksTo, permissionMenu } from "./permissions";
@@ -88,6 +91,8 @@
   let request = $state.raw<Request>();
   // What the page asks, oldest first; the engine sends one of a kind at a time.
   let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
+  let picking = $state.raw<DomicilePickerEvent>();
+  let picker = $state<ReturnType<typeof PagePicker> | null>();
   let shown = $state<ReturnType<typeof PageAsk>>();
   // The SDK hands the engine's null as undefined. A site opened as an app
   // (`domicile open --app`) is drawn as an application, without one too.
@@ -114,6 +119,16 @@
     if (active && had) {
       void tick().then(focus);
     }
+  };
+  const picked = (answer: () => void) => {
+    const had = hasKeyboard();
+    try {
+      answer();
+    } catch (error) {
+      console.error("[windows] picker", error);
+    }
+    picking = undefined;
+    regain(had);
   };
   const answered = (event: Event, answer: () => void) => {
     const had = hasKeyboard();
@@ -198,6 +213,11 @@
       }
     });
     view.addEventListener(WEBVIEW_DIALOG_WITHDRAWN_EVENT, () => asksNo("dialog"));
+    view.addEventListener(WEBVIEW_PICKER_EVENT, (event) => {
+      event.preventDefault();
+      picking = event;
+    });
+    view.addEventListener(WEBVIEW_PICKER_WITHDRAWN_EVENT, () => picked(() => undefined));
     view.addEventListener(WEBVIEW_SIGN_IN_EVENT, (event) => {
       event.preventDefault();
       asks("sign-in", event, signInAsk(event));
@@ -287,6 +307,7 @@
       // A view hears of no more; the browser asks the next one again.
       request = undefined;
       asking = [];
+      picking = undefined;
     };
   };
 
@@ -316,6 +337,8 @@
   export const focus = () => {
     if (shown !== undefined && shown !== null && asking[0]?.ask.aside !== true) {
       shown.focus();
+    } else if (picking !== undefined) {
+      picker?.focus();
     } else if (chrome && blank(page?.url ?? "")) {
       address?.focus();
       address?.select();
@@ -403,6 +426,18 @@
   {/if}
   <div class="page" bind:this={frame}>
     {#if request !== undefined}<Permission {request} />{/if}
+    {#if picking !== undefined}
+      {@const event = picking}
+      {#key event}
+        <PagePicker
+          bind:this={picker}
+          request={event}
+          {active}
+          onchoose={(value) => picked(() => event.choose(value))}
+          oncancel={() => picked(() => event.cancel())}
+        />
+      {/key}
+    {/if}
     {#if asking[0] !== undefined}
       {@const { event, ask } = asking[0]}
       {#key event}
