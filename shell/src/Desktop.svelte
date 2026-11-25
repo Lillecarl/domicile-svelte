@@ -478,5 +478,7 @@
     padding: 0 8px;
     box-sizing: border-box;
     background: #1e1e2e center / cover no-repeat;
+    /* A double click on an <app> selects the next <webview>, and paints it blue. */
+    user-select: none;
   }
 </style>

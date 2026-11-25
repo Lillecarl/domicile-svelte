@@ -755,9 +755,12 @@
     position: relative;
     flex: 1;
     min-height: 0;
+    /* For the text of its dialogs. */
+    user-select: text;
   }
 
   .page :global(webview) {
+    user-select: none;
     display: block;
     width: 100%;
     height: 100%;
