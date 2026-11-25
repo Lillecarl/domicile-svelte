@@ -3,7 +3,9 @@
   and a site's app window get no address bar, as in Chrome.
 -->
 <script lang="ts">
+  import { acceleratedBy, appMenu, appPopupMenu, openedByMnemonic } from "@domicile-desktop/sdk/app-menu";
   import type { BrowserWindow } from "@domicile-desktop/sdk/desktop/browser";
+  import { messageBox } from "@domicile-desktop/sdk/message-box";
   import {
     WEBVIEW_CONTEXT_MENU_EVENT,
     WEBVIEW_DEVICE_REQUEST_CHANGE_EVENT,
@@ -18,6 +20,7 @@
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
+    WEBVIEW_GUEST_KEYUP_EVENT,
     WEBVIEW_IDENTITY_EVENT,
     WEBVIEW_IDENTITY_WITHDRAWN_EVENT,
     WEBVIEW_LOAD_PROGRESS_CHANGE_EVENT,
@@ -40,10 +43,12 @@
   } from "@domicile-desktop/sdk/webview-element";
   import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
   import type { Entry } from "@domicile-svelte/menu";
-  import { useDomicile } from "@domicile-svelte/svelte";
+  import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { tick, untrack } from "svelte";
 
+  import AppMenuBar from "./AppMenuBar.svelte";
   import { addressOf } from "./address";
+  import { appEntries, boxAsk } from "./app-menu";
   import { type Ask, dialogAsk } from "./ask";
   import { deviceAsk } from "./device";
   import { appIn, externalAppAsk } from "./external-app";
@@ -54,6 +59,7 @@
   import PagePicker from "./PagePicker.svelte";
   import PageProblem from "./PageProblem.svelte";
   import { pageMenu } from "./page-menu";
+  import PageView from "./PageView.svelte";
   import Permission, { type Request } from "./Permission.svelte";
   import { asksTo, permissionMenu } from "./permissions";
   import { type Problem, problemOf } from "./problem";
@@ -90,13 +96,15 @@
     onfocus: () => void;
     /** The page or an extension asked to be raised. */
     onfocusrequest: () => void;
-    /** A right click: draw this menu there, on the screen. */
-    onmenu: (entries: Entry[], x: number, y: number) => void;
+    /** Draw this menu there, on the screen. The answer puts it away. */
+    onmenu: (entries: Entry[], x: number, y: number, onclose?: () => void) => () => void;
   } = $props();
 
   const { browser, extensions, processes } = useDomicile();
 
   type Page = HTMLWebViewElement;
+  /** What an ask is answered to: one of the window's pages, through the event it asked with, or its app. */
+  type Asker = { readonly target: EventTarget | null };
 
   let frame = $state<HTMLElement>();
   let address = $state<HTMLInputElement>();
@@ -104,7 +112,7 @@
   let typed = $state("");
   let request = $state.raw<Request>();
   // What the page asks, oldest first; the engine sends one of a kind at a time.
-  let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
+  let asking = $state.raw<readonly { kind: string; event: Asker; ask: Ask }[]>([]);
   let finding = $state(false);
   let zoom = $state(1);
   let loading = $state(false);
@@ -120,19 +128,105 @@
   // (`domicile open --app`) is drawn as an application, without one too.
   const chrome = $derived(!fullscreen && browserWindow.popupWindow === undefined && !browserWindow.isApp);
 
+  // The page that had the keyboard: the window's, or a view of its app's.
+  let last: EventTarget | null = null;
+
+  // What an Electron app says of its window.
+  const allViews = watch(browser, "change", () => browser.views);
+  const views = $derived((allViews.current ?? []).filter(({ parent }) => parent === id));
+  const read = <Value,>(text: string | undefined, parse: (text: string) => Value): Value | undefined => {
+    try {
+      return text === undefined ? undefined : parse(text);
+    } catch (error) {
+      console.error("[windows] app", error);
+      return undefined;
+    }
+  };
+  const menuText = $derived(browserWindow.menu);
+  const menu = $derived(read(menuText, appMenu) ?? []);
+  let altAlone = false;
+  // A bar that hides itself, shown by Alt.
+  let barShown = $state(false);
+  let bar = $state<ReturnType<typeof AppMenuBar> | null>();
+  const hasBar = $derived(!fullscreen && menu.length > 0 && browserWindow.menuBarVisible);
+  const showsBar = $derived(hasBar && (!browserWindow.menuBarAutoHide || barShown));
+  const chooseMenu = (entry: number) => browser.clickMenu(id, entry);
+  // Whether `event` is the app's: an accelerator, or Alt and a menu's letter.
+  const menuKey = (event: KeyboardEvent) => {
+    const accelerated = acceleratedBy(menu, event);
+    const opened = hasBar ? openedByMnemonic(menu, event) : undefined;
+    if (accelerated !== undefined) {
+      chooseMenu(accelerated.id);
+    } else if (opened !== undefined) {
+      barShown = true;
+      void tick().then(() => bar?.open(opened.id));
+    }
+    return accelerated !== undefined || opened !== undefined;
+  };
+
+  const boxText = $derived(browserWindow.messageBox);
+  $effect(() => {
+    const box = read(boxText, messageBox);
+    const window = id;
+    if (box === undefined || page === undefined) {
+      return undefined;
+    }
+    const asker = { target: null };
+    untrack(() =>
+      asks(
+        "app",
+        asker,
+        boxAsk(box, (button, ticked) => browser.answerMessageBox(window, button, ticked)),
+      ),
+    );
+    return () => untrack(() => asksNo("app", asker));
+  });
+
+  const popupText = $derived(browserWindow.popupMenu);
+  $effect(() => {
+    const text = popupText;
+    const window = id;
+    if (text === undefined || page === undefined) {
+      return undefined;
+    }
+    const box = page.getBoundingClientRect();
+    return untrack(() => {
+      const popup = read(text, appPopupMenu);
+      let chosen = 0;
+      let answered = false;
+      const answer = () => {
+        if (!answered) {
+          answered = true;
+          browser.answerPopupMenu(window, chosen);
+        }
+      };
+      if (popup === undefined) {
+        answer();
+        return undefined;
+      }
+      const entries = appEntries(popup.entries, (entry) => (chosen = entry));
+      const close = onmenu(entries, box.left + popup.at.x, box.top + popup.at.y, answer);
+      return () => {
+        // The app took it back, or has another: no answer.
+        answered = true;
+        close();
+      };
+    });
+  });
+
   // The list hands a new object on every change; the view follows the id.
   const id = $derived(browserWindow.id);
 
-  // Ask `ask`, in the place of any other of its kind.
-  const asks = (kind: string, event: Event, ask: Ask) => {
+  // Ask `ask`, in the place of any other of its kind and page.
+  const asks = (kind: string, event: Asker, ask: Ask) => {
     const next = { kind, event, ask };
     asking = asking.some((each) => each.event === event)
       ? asking.map((each) => (each.event === event ? next : each))
-      : [...asking.filter((each) => each.kind !== kind), next];
+      : [...asking.filter((each) => each.kind !== kind || each.event.target !== event.target), next];
   };
-  const asksNo = (kind: string) => {
+  const asksNo = (kind: string, { target }: Asker) => {
     const had = hasKeyboard();
-    asking = asking.filter((each) => each.kind !== kind);
+    asking = asking.filter((each) => each.kind !== kind || each.event.target !== target);
     regain(had);
   };
   const hasKeyboard = () => frame?.contains(document.activeElement) === true;
@@ -152,7 +246,7 @@
     picking = undefined;
     regain(had);
   };
-  const answered = (event: Event, answer: () => void) => {
+  const answered = (event: Asker, answer: () => void) => {
     const had = hasKeyboard();
     // Still asked while it is answered: the answer reads it.
     try {
@@ -170,6 +264,11 @@
     // shows in one view at a time: create it here, once, attribute first.
     const view = document.createElement("webview") as Page;
     view.setAttribute("window", id);
+    // An app's views are in the frame too, and its events bubble.
+    const stop = new AbortController();
+    type Heard<Name> = Name extends keyof HTMLElementEventMap ? HTMLElementEventMap[Name] : Event;
+    const hears = <Name extends string>(name: Name, heard: (event: Heard<Name>) => void) =>
+      frame.addEventListener(name, heard as (event: Event) => void, { signal: stop.signal });
     let shown = "";
     const changed = () => {
       // A window opened at a URL is blank at first, so its bar took the focus.
@@ -212,12 +311,23 @@
     view.addEventListener(WEBVIEW_ZOOM_CHANGE_EVENT, readZoom);
     view.addEventListener(WEBVIEW_ZOOM_IN_REQUEST_EVENT, zoomIn);
     view.addEventListener(WEBVIEW_ZOOM_OUT_REQUEST_EVENT, zoomOut);
-    view.addEventListener(WEBVIEW_GUEST_FOCUS_EVENT, () => onfocus());
+    hears(WEBVIEW_GUEST_FOCUS_EVENT, (event) => {
+      last = event.target;
+      onfocus();
+    });
     view.addEventListener(WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT, () => onfullscreen(view.pageFullscreen));
-    view.addEventListener(WEBVIEW_FOCUS_REQUEST_EVENT, () => onfocusrequest());
+    hears(WEBVIEW_FOCUS_REQUEST_EVENT, (event) => {
+      last = event.target;
+      onfocusrequest();
+    });
     // The page saw the chord first and let it through.
-    view.addEventListener(WEBVIEW_GUEST_KEYDOWN_EVENT, (event) => {
-      const binding = bindings[chordOf(event)];
+    hears(WEBVIEW_GUEST_KEYDOWN_EVENT, (event) => {
+      altAlone = event.key === "Alt" && (altAlone || !event.repeat);
+      if (menuKey(event)) {
+        event.preventDefault();
+        return;
+      }
+      const binding = event.target === view ? bindings[chordOf(event)] : undefined;
       const extension = binding === undefined && runsCommands(extensions) ? commandFor(extensions, event) : undefined;
       if (binding !== undefined) {
         event.preventDefault();
@@ -225,6 +335,12 @@
       } else if (extension !== undefined) {
         event.preventDefault();
         extensions.runCommand(extension.id, extension.command.name);
+      }
+    });
+    hears(WEBVIEW_GUEST_KEYUP_EVENT, (event) => {
+      if (event.key === "Alt" && altAlone) {
+        altAlone = false;
+        barShown = !barShown;
       }
     });
     view.addEventListener(WEBVIEW_CONTEXT_MENU_EVENT, (event) => {
@@ -250,44 +366,48 @@
       onmenu(entries, box.left + event.x, box.top + event.y);
     });
     // Uploads and downloads. Unclaimed, it is canceled.
-    view.addEventListener(WEBVIEW_FILE_CHOOSER_EVENT, (event) => {
+    hears(WEBVIEW_FILE_CHOOSER_EVENT, (event) => {
       event.preventDefault();
       onfiles(event);
     });
     // Unclaimed, the engine answers no.
-    view.addEventListener(WEBVIEW_DIALOG_EVENT, (event) => {
+    hears(WEBVIEW_DIALOG_EVENT, (event) => {
       const ask = dialogAsk(event);
       if (ask !== undefined) {
         event.preventDefault();
         asks("dialog", event, ask);
       }
     });
-    view.addEventListener(WEBVIEW_DIALOG_WITHDRAWN_EVENT, () => asksNo("dialog"));
-    view.addEventListener(WEBVIEW_PICKER_EVENT, (event) => {
+    hears(WEBVIEW_DIALOG_WITHDRAWN_EVENT, (event) => asksNo("dialog", event));
+    hears(WEBVIEW_PICKER_EVENT, (event) => {
       event.preventDefault();
       picking = event;
     });
-    view.addEventListener(WEBVIEW_PICKER_WITHDRAWN_EVENT, () => picked(() => undefined));
-    view.addEventListener(WEBVIEW_SIGN_IN_EVENT, (event) => {
+    hears(WEBVIEW_PICKER_WITHDRAWN_EVENT, (event) => {
+      if (picking?.target === event.target) {
+        picked(() => undefined);
+      }
+    });
+    hears(WEBVIEW_SIGN_IN_EVENT, (event) => {
       event.preventDefault();
       asks("sign-in", event, signInAsk(event));
     });
-    view.addEventListener(WEBVIEW_SIGN_IN_WITHDRAWN_EVENT, () => asksNo("sign-in"));
-    view.addEventListener(WEBVIEW_IDENTITY_EVENT, (event) => {
+    hears(WEBVIEW_SIGN_IN_WITHDRAWN_EVENT, (event) => asksNo("sign-in", event));
+    hears(WEBVIEW_IDENTITY_EVENT, (event) => {
       event.preventDefault();
       asks("identity", event, identityAsk(event));
     });
-    view.addEventListener(WEBVIEW_IDENTITY_WITHDRAWN_EVENT, () => asksNo("identity"));
-    view.addEventListener(WEBVIEW_PROMPT_EVENT, (event) => {
+    hears(WEBVIEW_IDENTITY_WITHDRAWN_EVENT, (event) => asksNo("identity", event));
+    hears(WEBVIEW_PROMPT_EVENT, (event) => {
       const ask = promptAsk(event);
       if (ask !== undefined) {
         event.preventDefault();
         asks("prompt", event, ask);
       }
     });
-    view.addEventListener(WEBVIEW_PROMPT_WITHDRAWN_EVENT, () => asksNo("prompt"));
+    hears(WEBVIEW_PROMPT_WITHDRAWN_EVENT, (event) => asksNo("prompt", event));
     let link: Event | undefined;
-    view.addEventListener(WEBVIEW_EXTERNAL_APP_EVENT, (event) => {
+    hears(WEBVIEW_EXTERNAL_APP_EVENT, (event) => {
       event.preventDefault();
       link = event;
       processes
@@ -308,25 +428,27 @@
         })
         .catch((error: unknown) => console.error("[windows] what opens", event.url, error));
     });
-    view.addEventListener(WEBVIEW_EXTERNAL_APP_WITHDRAWN_EVENT, () => {
-      link = undefined;
-      asksNo("external-app");
+    hears(WEBVIEW_EXTERNAL_APP_WITHDRAWN_EVENT, (event) => {
+      if (link?.target === event.target) {
+        link = undefined;
+      }
+      asksNo("external-app", event);
     });
     let devices: DomicileDeviceRequestEvent | undefined;
-    view.addEventListener(WEBVIEW_DEVICE_REQUEST_EVENT, (event) => {
+    hears(WEBVIEW_DEVICE_REQUEST_EVENT, (event) => {
       event.preventDefault();
       devices = event;
       asks("device", event, deviceAsk(event));
     });
-    view.addEventListener(WEBVIEW_DEVICE_REQUEST_CHANGE_EVENT, () => {
+    hears(WEBVIEW_DEVICE_REQUEST_CHANGE_EVENT, () => {
       const event = devices;
       if (event !== undefined && asking.some((each) => each.event === event)) {
         asks("device", event, deviceAsk(event));
       }
     });
-    view.addEventListener(WEBVIEW_DEVICE_REQUEST_WITHDRAWN_EVENT, () => asksNo("device"));
+    hears(WEBVIEW_DEVICE_REQUEST_WITHDRAWN_EVENT, (event) => asksNo("device", event));
     // The browser sends one at a time. Unclaimed, the page gets nothing.
-    view.addEventListener(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
+    hears(WEBVIEW_PERMISSION_REQUEST_EVENT, (event) => {
       const asks = asksTo(event.permissions);
       if (asks === undefined) {
         return;
@@ -335,7 +457,7 @@
       const answering = (answer: () => void) => () => {
         request = undefined;
         answer();
-        view.focus();
+        focus();
       };
       request = {
         site: event.origin.replace(/^https:\/\//u, ""),
@@ -345,13 +467,14 @@
         dismiss: answering(() => event.dismiss()),
       };
     });
-    view.addEventListener(WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT, () => {
+    hears(WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT, () => {
       request = undefined;
     });
     frame.append(view);
     page = view;
     changed();
     return () => {
+      stop.abort();
       view.remove();
       page = undefined;
       // A view hears of no more; the browser asks the next one again.
@@ -397,9 +520,10 @@
       address?.focus();
       address?.select();
     } else {
-      page?.focus();
+      pageFocused()?.focus();
     }
   };
+  const pageFocused = () => (last instanceof HTMLElement && frame?.contains(last) === true ? last : page);
 
   const editAddress = () => {
     if (chrome) {
@@ -518,7 +642,13 @@
       {#if loading}<div class="progress" style:width="{loaded * 100}%"></div>{/if}
     </form>
   {/if}
+  {#if showsBar}
+    <AppMenuBar bind:this={bar} entries={menu} {onmenu} onchoose={chooseMenu} onclose={() => (barShown = false)} />
+  {/if}
   <div class="page" bind:this={frame}>
+    {#if drawn}
+      {#each views as view (view.id)}<PageView {view} />{/each}
+    {/if}
     {#if page !== undefined}<PageHints view={page} />{/if}
     {#if request !== undefined}<Permission {request} />{/if}
     {#if problem !== undefined && page !== undefined}
@@ -609,10 +739,6 @@
     width: 16px;
     height: 16px;
     object-fit: contain;
-  }
-
-  img[hidden] {
-    display: none;
   }
 
   .progress {

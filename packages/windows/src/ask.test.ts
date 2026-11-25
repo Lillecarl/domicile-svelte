@@ -23,7 +23,7 @@ test("a prompt answers with its text, and the others with none", () => {
   expect(dialog("prompt", answers)?.fields?.[0]?.value).toBe("me");
   dialog("prompt", answers)?.accept(answer);
   dialog("confirm", answers)?.accept(answer);
-  dialog("confirm", answers)?.dismiss();
+  dialog("confirm", answers)?.dismiss(answer);
   expect(answers).toEqual(["yes you", "yes ", "no"]);
 });
 

@@ -12,18 +12,20 @@ export type Ask = {
   picked?: number;
   /** A box to tick. */
   tick?: string;
+  /** Whether it starts ticked. */
+  ticked?: boolean;
   note?: string;
   links?: readonly { label: string; url: string }[];
   /** The button that says yes, and the one that says no. One without has no such button. */
   yes?: string;
   no?: string;
-  extra?: readonly { label: string; run: () => void }[];
+  extra?: readonly { label: string; run: (answer: Answer) => void }[];
   /** Yes gives something away: No has the keyboard, and Yes waits for the user to have read it. */
   grants?: boolean;
   /** In the page's corner, which stays usable, and without the keyboard. */
   aside?: boolean;
   accept: (answer: Answer) => void;
-  dismiss: () => void;
+  dismiss: (answer: Answer) => void;
 };
 
 export type Answer = { texts: readonly string[]; choice: number; ticked: boolean };

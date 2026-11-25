@@ -101,7 +101,14 @@
   const { browser, capture, extensions, files, pointer, session: lock, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
-  const pages = watch(browser, "change", () => browser.windows);
+  const listed = watch(browser, "change", () => browser.windows);
+  // An Electron app's hidden window is as good as closed until it is shown.
+  const visible = $derived(listed.current?.filter((page) => !page.isHidden));
+  const pages = {
+    get current() {
+      return visible;
+    },
+  };
 
   // A browser window's key; a native window's is its appId.
   const keyOf = (page: Page) => `browser:${page.id}`;
@@ -996,7 +1003,21 @@
 
   // A page's context menu. Drawn out of its tile, whose transform and clip
   // would place it.
-  let menu = $state.raw<{ entries: Entry[]; x: number; y: number }>();
+  let menu = $state.raw<{ entries: Entry[]; x: number; y: number; onclose?: (() => void) | undefined }>();
+  const closeMenu = (which: typeof menu) => {
+    if (menu === which) {
+      menu = undefined;
+      refocus();
+    }
+    which?.onclose?.();
+  };
+  const openMenu = (entries: Entry[], x: number, y: number, onclose?: () => void) => {
+    const replaced = menu;
+    const next = { entries, x, y, onclose };
+    menu = next;
+    replaced?.onclose?.();
+    return () => closeMenu(next);
+  };
 
   // What pages ask for files, one shown at a time, oldest first.
   let choosing = $state.raw<readonly DomicileFileChooserEvent[]>([]);
@@ -1270,7 +1291,7 @@
             windows.focusShell();
           }}
           onfocusrequest={() => focus(key)}
-          onmenu={(entries, x, y) => (menu = { entries, x, y })}
+          onmenu={openMenu}
           onfiles={(request) => (choosing = [...choosing, request])}
           onunload={unloads
             ? () => {
@@ -1340,16 +1361,7 @@
 
 {#if menu !== undefined}
   {#key menu}
-    <Menu
-      entries={menu.entries}
-      x={menu.x}
-      y={menu.y}
-      label="Page"
-      onclose={() => {
-        menu = undefined;
-        refocus();
-      }}
-    />
+    <Menu entries={menu.entries} x={menu.x} y={menu.y} label="Page" onclose={() => closeMenu(menu)} />
   {/key}
 {/if}
 

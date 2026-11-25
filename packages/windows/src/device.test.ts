@@ -17,7 +17,8 @@ test("a device is chosen by its id, once any is listed", () => {
   const found = ask(true, [{ id: 7, name: "Nano X" }]);
   expect(found).toMatchObject({ choices: [{ value: 7, label: "Nano X" }] });
   expect(found.picked).toBeUndefined();
-  found.accept({ texts: [], choice: 7, ticked: false });
-  found.dismiss();
+  const answer = { texts: [], choice: 7, ticked: false };
+  found.accept(answer);
+  found.dismiss(answer);
   expect(answers).toEqual(["choose 7", "cancel"]);
 });

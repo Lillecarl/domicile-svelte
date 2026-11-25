@@ -3,7 +3,7 @@
   import { useDomicile } from "@domicile-svelte/svelte";
   import { untrack } from "svelte";
 
-  import type { Ask } from "./ask";
+  import type { Answer, Ask } from "./ask";
 
   const {
     ask,
@@ -25,7 +25,7 @@
   // Keyed by question: one that changes while it is up keeps what is typed.
   let texts = $state(untrack(() => (ask.fields ?? []).map(({ value }) => value)));
   let wanted = $state(untrack(() => ask.picked));
-  let ticked = $state(false);
+  let ticked = $state(untrack(() => ask.ticked === true));
   const choice = $derived(ask.choices?.some(({ value }) => value === wanted) === true ? wanted : undefined);
 
   // A click or key meant for the page must not answer.
@@ -60,17 +60,20 @@
     }
   });
 
+  const answers = (run: (answer: Answer) => void) => {
+    const answer = { texts: $state.snapshot(texts), choice: choice ?? 0, ticked };
+    onanswered(() => run(answer));
+  };
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     if (ready && ask.yes !== undefined) {
-      const answer = { texts: $state.snapshot(texts), choice: choice ?? 0, ticked };
-      onanswered(() => ask.accept(answer));
+      answers((answer) => ask.accept(answer));
     }
   };
   const keydown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && (ask.no !== undefined || ask.yes !== undefined)) {
       event.preventDefault();
-      onanswered(() => ask.dismiss());
+      answers((answer) => ask.dismiss(answer));
     }
   };
 </script>
@@ -82,7 +85,12 @@
       {#if ask.icon}<img src={ask.icon} alt="" />{/if}
       <span>{ask.title}</span>
       {#if ask.aside && ask.no !== undefined}
-        <button type="button" aria-label={ask.no} title={ask.no} onclick={() => onanswered(() => ask.dismiss())}>
+        <button
+          type="button"
+          aria-label={ask.no}
+          title={ask.no}
+          onclick={() => answers((answer) => ask.dismiss(answer))}
+        >
           ✕
         </button>
       {/if}
@@ -124,12 +132,12 @@
       </p>
     {/if}
     <footer>
-      {#each ask.extra ?? [] as extra (extra.label)}
-        <button type="button" onclick={() => onanswered(extra.run)}>{extra.label}</button>
+      {#each ask.extra ?? [] as extra, at (at)}
+        <button type="button" onclick={() => answers(extra.run)}>{extra.label}</button>
       {/each}
       <span class="space"></span>
       {#if ask.no !== undefined && !ask.aside}
-        <button type="button" class="no" onclick={() => onanswered(() => ask.dismiss())}>{ask.no}</button>
+        <button type="button" class="no" onclick={() => answers((answer) => ask.dismiss(answer))}>{ask.no}</button>
       {/if}
       {#if ask.yes !== undefined}<button type="submit" class="yes" disabled={!ready}>{ask.yes}</button>{/if}
     </footer>

@@ -60,7 +60,7 @@ test("an account is chosen, or another added", () => {
   const ask = identity("accounts", [account("Ann"), account("Bo")], answers);
   expect(ask).toMatchObject({ aside: true, picked: 0, yes: "Continue" });
   ask.accept(answer);
-  ask.extra?.[0]?.run();
+  ask.extra?.[0]?.run(answer);
   expect(answers).toEqual(["choose 1", "provider 0"]);
 });
 
