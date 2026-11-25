@@ -1,0 +1,22 @@
+{
+  "name": "@domicile-svelte/bar-night-light",
+  "description": "Warmer screens while it is pressed.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "svelte": "./src/NightLight.svelte",
+      "default": "./src/NightLight.svelte"
+    }
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@domicile-svelte/bar": "workspace:*",
+    "@domicile-svelte/svelte": "workspace:*"
+  },
+  "peerDependencies": {
+    "@domicile-desktop/sdk": "^2.2.0",
+    "svelte": "^5.59.1"
+  }
+}

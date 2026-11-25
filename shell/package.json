@@ -15,6 +15,7 @@
     "@domicile-svelte/bar-idle": "workspace:*",
     "@domicile-svelte/bar-keymap": "workspace:*",
     "@domicile-svelte/bar-monitor": "workspace:*",
+    "@domicile-svelte/bar-night-light": "workspace:*",
     "@domicile-svelte/bar-notifications": "workspace:*",
     "@domicile-svelte/bar-tray": "workspace:*",
     "@domicile-svelte/bar-volume": "workspace:*",

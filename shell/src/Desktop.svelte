@@ -10,6 +10,7 @@
   import Idle from "@domicile-svelte/bar-idle";
   import Keymap from "@domicile-svelte/bar-keymap";
   import Monitor from "@domicile-svelte/bar-monitor";
+  import NightLight from "@domicile-svelte/bar-night-light";
   import Notifications from "@domicile-svelte/bar-notifications";
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
@@ -85,6 +86,7 @@
   // The TV could show a toast.
   let isCasting = $state(false);
   let downloads = $state<ReturnType<typeof Downloads>>();
+  let nightLight = $state<ReturnType<typeof NightLight>>();
   let monitor = $state<ReturnType<typeof Monitor>>();
   let notifications = $state<ReturnType<typeof Notifications>>();
 
@@ -324,6 +326,11 @@
       description: "Open the list of downloads, or close it.",
       run: () => ran(() => downloads?.toggle()),
     },
+    "night-light": {
+      usage: "night-light",
+      description: "Turn the night light on or off.",
+      run: () => ran(() => nightLight?.toggle()),
+    },
     monitor: {
       usage: "monitor",
       description: "Open the system monitor, or close it.",
@@ -405,6 +412,7 @@
       <Capturing />
       <Monitor bind:this={monitor} onclose={() => layout?.refocus()} />
       <Volume />
+      <NightLight bind:this={nightLight} onclicked={() => layout?.refocus()} />
       <Downloads bind:this={downloads} onclose={() => layout?.refocus()} />
       <Extensions onclose={() => layout?.refocus()} />
       <Tray icon={apps.icon} onclose={() => layout?.refocus()} />
