@@ -209,6 +209,16 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/pip": {
+      "name": "@domicile-svelte/pip",
+      "dependencies": {
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/portals": {
       "name": "@domicile-svelte/portals",
       "dependencies": {
@@ -260,6 +270,7 @@
         "@domicile-svelte/bar-workspaces": "workspace:*",
         "@domicile-svelte/launcher": "workspace:*",
         "@domicile-svelte/lock": "workspace:*",
+        "@domicile-svelte/pip": "workspace:*",
         "@domicile-svelte/portals": "workspace:*",
         "@domicile-svelte/svelte": "workspace:*",
         "@domicile-svelte/windows": "workspace:*",
@@ -315,6 +326,8 @@
     "@domicile-svelte/lock": ["@domicile-svelte/lock@workspace:packages/lock"],
 
     "@domicile-svelte/menu": ["@domicile-svelte/menu@workspace:packages/menu"],
+
+    "@domicile-svelte/pip": ["@domicile-svelte/pip@workspace:packages/pip"],
 
     "@domicile-svelte/portals": ["@domicile-svelte/portals@workspace:packages/portals"],
 

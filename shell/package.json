@@ -23,6 +23,7 @@
     "@domicile-svelte/bar-workspaces": "workspace:*",
     "@domicile-svelte/launcher": "workspace:*",
     "@domicile-svelte/lock": "workspace:*",
+    "@domicile-svelte/pip": "workspace:*",
     "@domicile-svelte/portals": "workspace:*",
     "@domicile-svelte/svelte": "workspace:*",
     "@domicile-svelte/windows": "workspace:*"

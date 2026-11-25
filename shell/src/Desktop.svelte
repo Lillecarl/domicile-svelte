@@ -18,6 +18,7 @@
   import Workspaces from "@domicile-svelte/bar-workspaces";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
+  import PictureInPicture from "@domicile-svelte/pip";
   import { Capturing, picture, Portals } from "@domicile-svelte/portals";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
   import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
@@ -449,6 +450,7 @@
     {/snippet}
   </Bar>
   <Scrolling bind:this={layout} {settle} {letGoAfter} />
+  <PictureInPicture onclose={() => layout?.refocus()} />
   {#if isLauncherOpen}
     <!-- Opened again, it starts from an empty query. -->
     {#key launcher}
