@@ -64,6 +64,20 @@
       })),
   };
 
+  const copies: Source = {
+    search: (query) =>
+      matching(domicile.clipboard.entries ?? [], query, ({ preview }) => [preview]).map((entry) => ({
+        key: `copy:${entry.id}`,
+        label: entry.preview,
+        detail: entry.current ? "on the clipboard" : "",
+        icon: entry.thumbnail,
+        run: () => {
+          domicile.clipboard.copy(entry.id);
+          layout?.refocus();
+        },
+      })),
+  };
+
   let keymap = $state<ReturnType<typeof Keymap>>();
   let cast = $state<ReturnType<typeof Cast>>();
   // The TV could show a toast.
@@ -101,6 +115,7 @@
       apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
       openLauncher([windowList], "Windows");
     },
+    "Meta+v": () => openLauncher([copies], "History"),
     "Meta+space": () => keymap?.next(),
     "Meta+p": () => layout?.park(),
     "Meta+o": () => layout?.toggleOverview(),
