@@ -27,7 +27,7 @@ export const parkedRow = (
   let x = (strip - total) / 2;
   return new Map(
     all.map(([key, size]): [string, Box] => {
-      const box = { x, y: height + ROW_GAP, ...size };
+      const box = { x, y: height + ROW_GAP, width: size.width, height: size.height };
       x += size.width + gap;
       return [key, box];
     }),
@@ -51,20 +51,27 @@ export const boundsOf = (boxes: Iterable<Box>): Box => {
 export const zoomFor = (bounds: Box, view: Size): number => {
   const room = 1 - 2 * MARGIN;
   const across = (view.width * room) / Math.max(1, bounds.width);
-  // Its height has to fit: there is no panning up and down.
   const down = (view.height * room) / Math.max(1, bounds.height);
-  return Math.min(LARGEST, down, Math.max(SMALLEST, across));
+  return Math.min(LARGEST, Math.max(SMALLEST, Math.min(across, down)));
 };
 
+/** `box` with its axes swapped, to pan up and down. */
+export const turned = <T extends Partial<Box> & Size>(box: T): Box => ({
+  x: box.y ?? 0,
+  y: box.x ?? 0,
+  width: box.height,
+  height: box.width,
+});
+
 /** The place nearest `pan`, shown in the middle of the view, that leaves no more empty than it must. */
-export const clampPan = (pan: number, bounds: Box, view: Size, zoom: number): number => {
+export const clampPan = (pan: number, bounds: Box, view: Pick<Size, "width">, zoom: number): number => {
   const half = (view.width * (0.5 - MARGIN)) / zoom;
   const [first, last] = [bounds.x + half, bounds.x + bounds.width - half];
   return first >= last ? bounds.x + bounds.width / 2 : Math.max(first, Math.min(last, pan));
 };
 
 /** `pan` moved as little as shows `box` whole. */
-export const panTo = (pan: number, box: Box, view: Size, zoom: number): number => {
+export const panTo = (pan: number, box: Box, view: Pick<Size, "width">, zoom: number): number => {
   const half = (view.width * (0.5 - MARGIN)) / zoom;
   return Math.max(box.x + box.width - half, Math.min(box.x + half, pan));
 };

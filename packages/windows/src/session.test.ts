@@ -43,12 +43,24 @@ const session = sessionOf(
     { ...saved(B), key: "browser:2" },
     { ...saved(B, slack), key: "browser:3" },
   ],
-  [columnOfWidth(["kitty", "browser:2"], 0.5), columnOfWidth(["kitty-2"], 0.5), columnOfWidth(["browser:1"], 0.3)],
+  ["kitty", "kitty-2"],
+  {
+    workspaces: [
+      [columnOfWidth(["kitty", "browser:2"], 0.5), columnOfWidth(["kitty-2"], 0.5)],
+      [columnOfWidth(["browser:1"], 0.3), columnOfWidth(["unsaved"], 0.3)],
+      [],
+    ],
+    at: 1,
+  },
   ["browser:3"],
 );
 
-test("a session has its pages' columns, without native windows", () => {
-  expect(session.columns.map(({ windows }) => windows)).toEqual([[1], [0]]);
+test("a session has its windows' columns", () => {
+  expect(session.workspaces.map((columns) => columns.map(({ windows }) => windows))).toEqual([
+    [["kitty", 1], ["kitty-2"]],
+    [[0]],
+    [],
+  ]);
   expect(session.parked).toEqual([2]);
   expect(parseSession(JSON.stringify(session))).toEqual(session);
 });
@@ -59,25 +71,44 @@ test("text that is no session is none", () => {
   }
 });
 
+test("a session saved without workspaces has one", () => {
+  const { pages, parked, workspaces } = session;
+  expect(parseSession(JSON.stringify({ pages, parked, columns: workspaces[1] }))).toEqual({
+    pages,
+    parked,
+    workspaces: [workspaces[1] ?? []],
+    at: 0,
+  });
+});
+
 test("on an empty desk every page sleeps in its place", () => {
-  const { asleep, columns, parked } = restored(session, []);
+  const { asleep, workspaces, at, parked } = restored(session, []);
   expect(asleep.map(({ key, url }) => [key, url])).toEqual([
     ["asleep:0", A],
     ["asleep:1", B],
     ["asleep:2", B],
   ]);
-  expect(columns).toEqual([columnOfWidth(["asleep:1"], 0.5), columnOfWidth(["asleep:0"], 0.3)]);
+  expect(workspaces).toEqual([[columnOfWidth(["asleep:1"], 0.5)], [columnOfWidth(["asleep:0"], 0.3)], []]);
+  expect(at).toBe(1);
   expect(parked).toEqual(["asleep:2"]);
 });
 
 test("after a shell reload open windows keep their keys and places", () => {
-  const { asleep, columns, parked } = restored(session, [
-    { key: "browser:7", page: saved(A) },
-    // An app is the same one wherever it has gone.
-    { key: "browser:8", page: saved("https://b.example/elsewhere", slack) },
-  ]);
+  const { asleep, workspaces, parked } = restored(
+    session,
+    [
+      { key: "browser:7", page: saved(A) },
+      // An app is the same one wherever it has gone.
+      { key: "browser:8", page: saved("https://b.example/elsewhere", slack) },
+    ],
+    ["kitty-2"],
+  );
   expect(asleep.map(({ key }) => key)).toEqual(["asleep:1"]);
-  expect(columns.map(({ windows }) => windows)).toEqual([["asleep:1"], ["browser:7"]]);
+  expect(workspaces.map((columns) => columns.map(({ windows }) => windows))).toEqual([
+    [["asleep:1"], ["kitty-2"]],
+    [["browser:7"]],
+    [],
+  ]);
   expect(parked).toEqual(["browser:8"]);
 });
 
@@ -88,6 +119,7 @@ test("two windows of one address take one page each", () => {
       { ...saved(A), key: "2" },
     ],
     [],
+    { workspaces: [], at: 0 },
     [],
   );
   const { asleep } = restored(twice, [{ key: "browser:1", page: saved(A) }]);

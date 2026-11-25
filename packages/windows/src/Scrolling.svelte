@@ -11,6 +11,9 @@
   (`consumeOrExpel`, `maximize`, `cycleWidth` and the rest); `listing` and
   `show` serve a window switcher. `toggleOverview` draws it all smaller, parked
   windows too, to pick and move windows in.
+
+  The strips are in workspaces, one under the other, as niri's: `focusWorkspace`
+  and `moveToWorkspace`.
 -->
 <script lang="ts" module>
   /** A window as a switcher lists it. */
@@ -21,6 +24,9 @@
     app: string;
     parked: boolean;
   };
+
+  /** A workspace by its number from 1, the one above or below, or the one shown before. */
+  export type WorkspaceTarget = number | "up" | "down" | "previous";
 </script>
 
 <script lang="ts">
@@ -50,11 +56,9 @@
     moveWindow as windowMoved,
     neighbor,
     nextPreset,
-    place,
     scrollTo,
     setFull,
     spans,
-    sync,
     toggleFull,
   } from "./columns";
   import {
@@ -62,12 +66,12 @@
     clampPan,
     type Drop,
     dropAt,
-    dropped,
     markOf,
     panTo,
     parkedRow,
     ROW_GAP,
     type Size,
+    turned,
     zoomFor,
   } from "./overview";
   import { chooserOf } from "./page-files";
@@ -76,6 +80,22 @@
   import Sleeper from "./Sleeper.svelte";
   import { readSession, sessionWriter } from "./session-file";
   import { type Asleep, parseSession, renamed, restored, savedOf, sessionOf, sleeperOf } from "./session";
+  import {
+    droppedIn,
+    emptyWorkspace,
+    isEmpty,
+    mapColumns,
+    movedTo,
+    placeAll,
+    rowAt,
+    rowsOf,
+    synced,
+    tidied,
+    widest,
+    windowsOf,
+    workspaceOf,
+    type Workspaces,
+  } from "./workspaces";
 
   const {
     width = 1 / 2,
@@ -118,12 +138,17 @@
   const apps = $derived(list.current.filter((window) => window.parent === undefined));
   const tiledPages = $derived((pages.current ?? []).filter((page) => !floats(page)));
 
-  let columns = $state<Columns>([]);
+  let workspaces = $state.raw<Workspaces>([emptyWorkspace(1)]);
+  // The workspace shown, and the one before it, by id.
+  let shown = $state(1);
+  let shownBefore: number | undefined;
+  const columns = $derived(workspaces.find(({ id }) => id === shown)?.columns ?? []);
   let viewWidth = $state(0);
   let viewHeight = $state(0);
-  let scroll = $state(0);
-  const across = $derived(spans(columns, { view: viewWidth, gap }));
-  const boxes = $derived(place(columns, { view: viewWidth, gap, height: viewHeight }));
+  const scrolls = new SvelteMap<number, number>();
+  const scroll = $derived(scrolls.get(shown) ?? 0);
+  const sizes = $derived({ view: viewWidth, gap, height: viewHeight });
+  const across = $derived(spans(columns, sizes));
 
   // The window that holds the keyboard, or held it last while shell UI (a
   // popup, a launcher) has it. Native focus reports itself; a browser window
@@ -138,6 +163,28 @@
   // need not draw anew.
   const parkedSizes: Record<string, Size> = {};
   let overview = $state(false);
+  // The part of the view's height that an empty workspace takes in the overview.
+  const EMPTY = 0.2;
+  const rows = $derived(
+    rowsOf(workspaces, shown, {
+      height: viewHeight,
+      gap: overview ? ROW_GAP : gap,
+      empty: overview ? viewHeight * EMPTY : viewHeight,
+    }),
+  );
+  // As the strip's `scroll` leaves them. The overview draws every strip from
+  // the same edge.
+  const boxes = $derived(placeAll(workspaces, sizes, rows, (id) => (overview ? 0 : scroll - (scrolls.get(id) ?? 0))));
+  const setWorkspaces = (next: Workspaces, show = shown) => {
+    if (show !== shown) {
+      shownBefore = shown;
+      shown = show;
+    }
+    workspaces = tidied(next, show);
+    if (!workspaces.some(({ id }) => id === shownBefore)) {
+      shownBefore = undefined;
+    }
+  };
   // Fullscreen windows. One fills the screen while it is the active window,
   // and keeps its place on the strip.
   const fullscreen = new SvelteSet<string>();
@@ -197,7 +244,7 @@
       quiet.add(to);
     }
     doze(from);
-    columns = renamed($state.snapshot(columns) as Columns, from, to);
+    workspaces = workspaces.map((each) => ({ ...each, columns: renamed(each.columns, from, to) }));
     parked = parked.map(rename);
     present = present.map(rename);
     history = history.map(rename);
@@ -237,16 +284,27 @@
         const saved = savedOf(page);
         return saved === undefined ? [] : [{ key: keyOf(page), page: saved }];
       });
-      const last = restored(session, open);
-      const placed = new Set(last.columns.flatMap((column) => column.windows));
+      const last = restored(
+        session,
+        open,
+        apps.map((window) => window.appId),
+      );
+      const placed = new Set(last.workspaces.flat().flatMap((column) => column.windows));
       asleep = last.asleep;
       parked = [...last.parked, ...parked.filter((key) => !last.parked.includes(key))];
-      columns = [
-        ...last.columns,
-        ...($state.snapshot(columns) as Columns)
-          .map((column) => ({ ...column, windows: column.windows.filter((key) => !placed.has(key)) }))
-          .filter((column) => column.windows.length > 0),
-      ];
+      const here = columns
+        .map((column) => ({ ...column, windows: column.windows.filter((key) => !placed.has(key)) }))
+        .filter((column) => column.windows.length > 0);
+      const strips = last.workspaces.length === 0 ? [[]] : last.workspaces;
+      const at = strips[last.at] === undefined ? 0 : last.at;
+      const floating = workspaces.flatMap((each) => each.floating);
+      const all = strips.map((strip, index) => ({
+        ...emptyWorkspace(index + 1),
+        columns: index === at ? [...strip, ...here] : strip,
+        floating: index === at ? floating : [],
+      }));
+      setWorkspaces(all, workspaceOf(all, active) ?? at + 1);
+      shownBefore = undefined;
       // An app notifies, so it runs whether or not it is looked at.
       for (const { key, isApp } of asleep) {
         if (isApp) {
@@ -273,10 +331,15 @@
       const saved = savedOf(page);
       return saved === undefined ? [] : [{ ...saved, key: keyOf(page) }];
     });
-    write(JSON.stringify(sessionOf([...open, ...asleep], $state.snapshot(columns) as Columns, parked)));
+    const native = apps.map((window) => window.appId);
+    const strips = {
+      workspaces: workspaces.map((each) => each.columns),
+      at: workspaces.findIndex(({ id }) => id === shown),
+    };
+    write(JSON.stringify(sessionOf([...open, ...asleep], native, strips, parked)));
   };
   $effect(() => {
-    void [pages.current, asleep, columns, parked];
+    void [pages.current, asleep, workspaces, shown, parked];
     if (!resumed) {
       return undefined;
     }
@@ -304,13 +367,26 @@
   });
 
   $effect(() => {
-    const open = [
-      ...apps.map((window) => window.appId),
-      ...tiledPages.map(keyOf),
-      ...asleep.map(({ key }) => key),
-    ].filter((key) => !parked.includes(key));
+    const out = (key: string) => !parked.includes(key);
+    const open = {
+      tiled: [...apps.map((window) => window.appId), ...tiledPages.map(keyOf), ...asleep.map(({ key }) => key)].filter(
+        out,
+      ),
+      floating: (pages.current ?? []).filter(floats).map(keyOf).filter(out),
+    };
     const at = active;
-    columns = untrack(() => sync($state.snapshot(columns) as Columns, open, at, width));
+    untrack(() => setWorkspaces(synced(workspaces, open, shown, at, width)));
+  });
+
+  // The active window's workspace is the one shown.
+  $effect.pre(() => {
+    const key = active;
+    untrack(() => {
+      const id = workspaceOf(workspaces, key);
+      if (id !== undefined && id !== shown) {
+        setWorkspaces(workspaces, id);
+      }
+    });
   });
 
   // The active column in view, and the view filled where the strip allows, so
@@ -323,7 +399,9 @@
     const strip = across;
     const view = viewWidth;
     if (view > 0 && !overview) {
-      scroll = untrack(() => filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
+      untrack(() => {
+        scrolls.set(shown, filled(span === undefined ? scroll : scrollTo(scroll, span, view), strip, view));
+      });
     }
   });
 
@@ -334,11 +412,18 @@
   const letGo = new SvelteSet<string>();
   const inView = (key: string) => {
     const box = boxes.get(key);
-    return box !== undefined && box.x < scroll + viewWidth && box.x + box.width > scroll;
+    return (
+      box !== undefined &&
+      box.x < scroll + viewWidth &&
+      box.x + box.width > scroll &&
+      box.y < viewHeight &&
+      box.y + box.height > 0
+    );
   };
+  const floatInView = (key: string) => workspaceOf(workspaces, key) === shown;
   const isDrawn = (page: Page, floating: boolean) => {
     const key = keyOf(page);
-    if (page.isCaptured || (!overview && (inView(key) || (floating && !parked.includes(key))))) {
+    if (page.isCaptured || (!overview && (inView(key) || (floating && floatInView(key))))) {
       return true;
     }
     // The overview shows every page that runs, and wakes none that does not.
@@ -353,8 +438,7 @@
     for (const page of pages.current ?? []) {
       const key = keyOf(page);
       open.add(key);
-      const shown = inView(key) || (floats(page) && !parked.includes(key));
-      if (shown) {
+      if (inView(key) || (floats(page) && floatInView(key))) {
         clearTimeout(leaving.get(key));
         leaving.delete(key);
         // After the focus that brought it into view, which looks here.
@@ -391,8 +475,15 @@
     }
   });
 
-  // The active window closed: the keyboard goes to the window that held it
-  // before, as a closed tab hands it to the tab used last.
+  /** The window of workspace `id` that held the keyboard last. */
+  const lastIn = (id: number): string | undefined => {
+    const here = workspaces.find((each) => each.id === id);
+    const keys = here === undefined ? [] : windowsOf(here).filter((key) => exists(key) && !parked.includes(key));
+    return history.find((key) => keys.includes(key)) ?? keys[0];
+  };
+
+  // The active window closed: the keyboard goes to the window of its workspace
+  // that held it before, as a closed tab hands it to the tab used last.
   $effect(() => {
     const now = [
       ...apps.map((window) => window.appId),
@@ -412,9 +503,7 @@
       if (active === undefined || !closed.includes(active)) {
         return;
       }
-      const next =
-        history.find((key) => !parked.includes(key)) ??
-        columns.flatMap((column) => column.windows).find((key) => now.includes(key) && !parked.includes(key));
+      const next = lastIn(shown);
       if (next === undefined) {
         active = undefined;
         windows.focusShell();
@@ -430,16 +519,11 @@
   // settle below), so the change waits for its stills; changes queue behind
   // each other in order.
   let rearranging = Promise.resolve();
-  const rearrange = (change: (columns: Columns, key: string) => Columns, also?: () => void) => {
-    const key = active;
-    if (key === undefined) {
-      return;
-    }
+  const rearrangeAll = (change: (workspaces: Workspaces) => Workspaces, also?: () => void) => {
     rearranging = rearranging
       .then(async () => {
-        const area = { view: viewWidth, gap, height: viewHeight };
-        const before = place($state.snapshot(columns) as Columns, area);
-        const after = place(change($state.snapshot(columns) as Columns, key), area);
+        const before = placeAll(workspaces, sizes, rows, () => 0);
+        const after = placeAll(change(workspaces), sizes, rows, () => 0);
         const resized = [...after].filter(([each, box]) => {
           const was = before.get(each);
           return was !== undefined && (was.width !== box.width || was.height !== box.height);
@@ -452,11 +536,20 @@
             stills.set(each, still);
           }
         }
-        columns = change($state.snapshot(columns) as Columns, key);
+        setWorkspaces(change(workspaces));
         // In the same update, so the tiles settle from where both left them.
         also?.();
       })
       .catch((error: unknown) => console.error("[windows] rearranging", error));
+  };
+  /** `change` on `key`'s strip. */
+  const rearrange = (change: (columns: Columns, key: string) => Columns, key = active) => {
+    if (key !== undefined) {
+      rearrangeAll((now) => {
+        const id = workspaceOf(now, key);
+        return id === undefined ? now : mapColumns(now, id, (strip) => change(strip, key));
+      });
+    }
   };
 
   // While a page has the keyboard, keys never reach the shell's document, so
@@ -545,6 +638,80 @@
     }
   };
 
+  /** Every workspace from the top, and whether it is the one shown. */
+  export const listWorkspaces = (): { id: number; shown: boolean; empty: boolean }[] =>
+    workspaces.map((each) => ({ id: each.id, shown: each.id === shown, empty: isEmpty(each) }));
+
+  // A number past the last is the last.
+  const idOf = (target: WorkspaceTarget): number | undefined => {
+    const at = workspaces.findIndex(({ id }) => id === shown);
+    const last = workspaces.length - 1;
+    switch (target) {
+      case "up":
+        return workspaces[Math.max(0, at - 1)]?.id;
+      case "down":
+        return workspaces[Math.min(last, at + 1)]?.id;
+      case "previous":
+        return shownBefore;
+      default:
+        return workspaces[Math.max(0, Math.min(last, target - 1))]?.id;
+    }
+  };
+
+  const showWorkspace = (id: number) => {
+    if (id === shown) {
+      return;
+    }
+    const key = lastIn(id);
+    setWorkspaces(workspaces, id);
+    active = key;
+    if (key === undefined) {
+      releasePage();
+      windows.focusShell();
+      refocus();
+    } else {
+      focus(key);
+      void warp();
+    }
+  };
+
+  /** Show a workspace, and focus its window that held the keyboard last. */
+  export const focusWorkspace = (target: WorkspaceTarget) => {
+    const id = idOf(target);
+    if (id !== undefined) {
+      showWorkspace(id);
+    }
+  };
+
+  const takeTo = (target: WorkspaceTarget, what: "column" | "window") => {
+    const key = active;
+    const id = idOf(target);
+    if (key === undefined || id === undefined || id === shown || workspaceOf(workspaces, key) !== shown) {
+      return;
+    }
+    const after = lastIn(id);
+    rearrangeAll(
+      (now) => movedTo(now, key, id, what, after),
+      () => {
+        if (active === key && workspaceOf(workspaces, key) === id) {
+          setWorkspaces(workspaces, id);
+        }
+      },
+    );
+  };
+
+  /** Move the active window's column to a workspace, and show it there. */
+  export const moveToWorkspace = (target: WorkspaceTarget) => takeTo(target, "column");
+
+  /** Move the active window up or down in its column, or from its end to the next workspace. */
+  export const moveWindowOrToWorkspace = (direction: "up" | "down") => {
+    if (neighbor(columns, active, direction) === undefined || columnOf(columns, active) === -1) {
+      takeTo(direction, "window");
+    } else {
+      moveWindow(direction);
+    }
+  };
+
   /** Ask the active window to close. */
   export const close = () => {
     const page = (pages.current ?? []).find((each) => keyOf(each) === active);
@@ -608,7 +775,7 @@
   export const center = () => {
     const span = across[columnOf(columns, active)];
     if (span !== undefined) {
-      scroll = centered(span, viewWidth);
+      scrolls.set(shown, centered(span, viewWidth));
     }
   };
 
@@ -656,7 +823,7 @@
           return setFullscreen(appId, request.kind === WindowRequestKind.Fullscreen);
         case WindowRequestKind.Maximize:
         case WindowRequestKind.Unmaximize:
-          return rearrange((now) => setFull(now, appId, request.kind === WindowRequestKind.Maximize));
+          return rearrange((now) => setFull(now, appId, request.kind === WindowRequestKind.Maximize), appId);
         case WindowRequestKind.Minimize:
           return minimize(appId);
         default:
@@ -665,7 +832,8 @@
     }),
   );
 
-  const isMaximized = (key: string) => columns[columnOf(columns, key)]?.full === true;
+  const isMaximized = (key: string) =>
+    workspaces.some((each) => each.columns[columnOf(each.columns, key)]?.full === true);
 
   const TILED = [WindowState.TiledLeft, WindowState.TiledRight, WindowState.TiledTop, WindowState.TiledBottom];
   const told = new Map<string, string>();
@@ -708,7 +876,7 @@
           setFullscreen(key, now.fullscreen);
         }
         if (now.maximized !== was.maximized) {
-          rearrange((each) => setFull(each, key, now.maximized));
+          rearrange((each) => setFull(each, key, now.maximized), key);
         }
         if (now.minimized && !was.minimized) {
           minimize(key);
@@ -778,7 +946,7 @@
       title: title || url,
       app: isApp && appId !== "" ? appId : "browser",
     }));
-    const order = columns.flatMap((column) => column.windows);
+    const order = workspaces.flatMap(windowsOf);
     return [...native, ...browsers, ...sleeping]
       .map((window) => ({ ...window, parked: parked.includes(window.key) }))
       .sort((a, b) => Number(a.parked) - Number(b.parked) || order.indexOf(a.key) - order.indexOf(b.key));
@@ -855,15 +1023,18 @@
   const floatBox = (page: Page) => {
     const w = Math.min(page.width || 480, viewWidth);
     const h = Math.min(page.height || 640, viewHeight);
-    return { x: (viewWidth - w) / 2, y: (viewHeight - h) / 2, width: w, height: h };
+    const y = rows.get(workspaceOf(workspaces, keyOf(page)) ?? shown)?.y ?? 0;
+    return { x: (viewWidth - w) / 2, y: y + (viewHeight - h) / 2, width: w, height: h };
   };
 
   let strip = $state<HTMLElement>();
+  // Where the last workspace ends.
+  const bottom = $derived(Math.max(viewHeight, ...[...rows.values()].map((row) => row.y + row.height)));
   const parkedBoxes = $derived.by(() => {
     if (!overview) {
       return new Map<string, Box>();
     }
-    const sizes = parked.flatMap((key): [string, Size][] => {
+    const parkedAt = parked.flatMap((key): [string, Size][] => {
       const page = (pages.current ?? []).find((each) => keyOf(each) === key);
       if (page === undefined && !exists(key)) {
         return [];
@@ -871,7 +1042,7 @@
       const fallback = page !== undefined && floats(page) ? floatBox(page) : undefined;
       return [[key, parkedSizes[key] ?? fallback ?? { width: (viewWidth - gap) * width, height: viewHeight }]];
     });
-    return parkedRow(new Map(sizes), { strip: across.at(-1)?.end ?? 0, height: viewHeight, gap });
+    return parkedRow(new Map(parkedAt), { strip: widest(workspaces, sizes), height: bottom, gap });
   });
 
   // Before the DOM takes the new boxes. Parked windows too: the first run is
@@ -1044,12 +1215,18 @@
   let layer = $state<HTMLElement | null>();
   const view = $derived({ width: viewWidth, height: viewHeight });
   const bounds = $derived(
-    boundsOf([{ x: 0, y: 0, width: 0, height: viewHeight }, ...boxes.values(), ...parkedBoxes.values()]),
+    boundsOf([
+      ...[...rows.values()].map((row) => ({ x: 0, width: 0, ...row })),
+      ...boxes.values(),
+      ...parkedBoxes.values(),
+    ]),
   );
   const zoom = $derived(zoomFor(bounds, view));
   let wanted = $state(0);
   const pan = $derived(clampPan(wanted, bounds, view, zoom));
-  const top = $derived((viewHeight - zoom * bounds.height) / 2 - zoom * bounds.y);
+  let wantedDown = $state(0);
+  const panDown = $derived(clampPan(wantedDown, turned(bounds), turned(view), zoom));
+  const top = $derived(viewHeight / 2 - zoom * panDown);
   const camera = $derived(
     overview ? `translate(${viewWidth / 2 - zoom * (pan - scroll)}px, ${top}px) scale(${zoom})` : "none",
   );
@@ -1058,7 +1235,10 @@
   $effect.pre(() => {
     const box = active === undefined ? undefined : (boxes.get(active) ?? parkedBoxes.get(active));
     if (overview && box !== undefined) {
-      wanted = untrack(() => panTo(pan, box, view, zoom));
+      untrack(() => {
+        wanted = panTo(pan, box, view, zoom);
+        wantedDown = panTo(panDown, turned(box), turned(view), zoom);
+      });
     }
   });
 
@@ -1075,13 +1255,15 @@
       refocus();
     } else {
       wanted = scroll + viewWidth / 2;
+      wantedDown = viewHeight / 2;
       releasePage();
       overview = true;
     }
   };
 
   let drag = $state<{ key: string; from: { x: number; y: number }; by: { x: number; y: number } }>();
-  let dropping = $state<Drop | "park">();
+  // Into a workspace, by its id, when it is empty.
+  let dropping = $state<Drop | "park" | number>();
   let pressed: { key: string | undefined; from: { x: number; y: number } } | undefined;
   const DRAG_AFTER = 8;
 
@@ -1119,7 +1301,13 @@
     const by = { x: at.x - pressed.from.x, y: at.y - pressed.from.y };
     if (drag !== undefined || Math.hypot(by.x, by.y) * zoom >= DRAG_AFTER) {
       drag = { key, from: pressed.from, by };
-      dropping = at.y > viewHeight + ROW_GAP / 2 ? "park" : dropAt(columns, boxes, key, at);
+      const into = workspaces.find(({ id }) => id === rowAt(rows, at.y));
+      dropping =
+        at.y > bottom + ROW_GAP / 2
+          ? "park"
+          : into?.columns.length === 0
+            ? into.id
+            : dropAt(into?.columns ?? [], boxes, key, at);
     }
   };
 
@@ -1129,7 +1317,7 @@
     await tick();
   };
 
-  const drop = async (key: string, where: Drop | "park" | undefined) => {
+  const drop = async (key: string, where: Drop | "park" | number | undefined) => {
     const letGo = () => {
       drag = undefined;
       dropping = undefined;
@@ -1146,20 +1334,31 @@
       }
       active = key;
       // A floating window goes back to its own place.
-      if (columnOf(columns, key) === -1) {
+      if (!workspaces.some((each) => columnOf(each.columns, key) !== -1)) {
         letGo();
       } else {
-        rearrange((now) => dropped(now, key, where, width), letGo);
+        rearrangeAll(
+          (now) => droppedIn(now, key, where, width),
+          () => {
+            setWorkspaces(workspaces, workspaceOf(workspaces, key));
+            letGo();
+          },
+        );
       }
     }
   };
 
-  const release = () => {
+  const release = (event: PointerEvent) => {
     const { key } = pressed ?? {};
     pressed = undefined;
     if (drag !== undefined) {
       void drop(drag.key, dropping);
     } else if (key === undefined) {
+      const { y } = pointIn(event);
+      const id = rowAt(rows, y);
+      if (id !== undefined && y < bottom) {
+        showWorkspace(id);
+      }
       toggleOverview();
     } else {
       void bring(key);
@@ -1168,7 +1367,12 @@
 
   const wheel = (event: WheelEvent) => {
     event.preventDefault();
-    wanted = clampPan(pan + (event.deltaX || event.deltaY) / zoom, bounds, view, zoom);
+    // Up and down only where it reaches further than the view.
+    const tall = bounds.height * zoom > viewHeight;
+    wanted = clampPan(pan + (event.deltaX || (tall ? 0 : event.deltaY)) / zoom, bounds, view, zoom);
+    if (tall) {
+      wantedDown = clampPan(panDown + event.deltaY / zoom, turned(bounds), turned(view), zoom);
+    }
   };
 
   const ARROWS: Record<string, Direction> = {
@@ -1182,7 +1386,11 @@
     if (event.key === "Escape" || event.key === "Enter") {
       toggleOverview();
     } else if (direction !== undefined) {
-      move(direction);
+      if ((direction === "up" || direction === "down") && neighbor(columns, active, direction) === undefined) {
+        focusWorkspace(direction);
+      } else {
+        move(direction);
+      }
     } else {
       return;
     }
@@ -1200,10 +1408,17 @@
 
   const mark = $derived(
     dropping === "park"
-      ? { x: 0, y: viewHeight + ROW_GAP / 2, width: Math.max(viewWidth, bounds.width), height: gap }
+      ? { x: 0, y: bottom + ROW_GAP / 2, width: Math.max(viewWidth, bounds.width), height: gap }
       : dropping === undefined
         ? undefined
-        : markOf(columns, boxes, dropping, gap),
+        : typeof dropping === "number"
+          ? { x: 0, width: gap, ...(rows.get(dropping) ?? { y: 0, height: 0 }) }
+          : markOf(
+              workspaces.flatMap((each) => each.columns),
+              boxes,
+              dropping,
+              gap,
+            ),
   );
 
   const translateOf = (key: string, box: Box | undefined, fixed = false) => {
@@ -1321,6 +1536,19 @@
         <Sleeper {page} onwake={() => focus(page.key)} />
       </div>
     {/each}
+    {#if overview}
+      {#each workspaces.filter(isEmpty) as { id } (id)}
+        {@const row = rows.get(id)}
+        <div
+          class="empty"
+          class:shown={id === shown}
+          style:translate="{-scroll}px {row?.y ?? 0}px"
+          style:transition={reducedMotion.current ? "none" : `translate ${settle}ms ${SETTLE_CURVE}`}
+          style:width="{viewWidth}px"
+          style:height="{row?.height ?? 0}px"
+        ></div>
+      {/each}
+    {/if}
     {#if overview && mark !== undefined}
       <div
         class="mark"
@@ -1385,6 +1613,19 @@
     inset: 0;
     z-index: 1;
     outline: none;
+  }
+
+  .empty {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border: calc(1px / var(--zoom, 1)) solid #45475a;
+    border-radius: 8px;
+    box-sizing: border-box;
+  }
+
+  .empty.shown {
+    border: calc(2px / var(--zoom, 1)) solid #74c7ec;
   }
 
   .mark {

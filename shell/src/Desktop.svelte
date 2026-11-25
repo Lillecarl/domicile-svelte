@@ -12,6 +12,7 @@
   import Tray from "@domicile-svelte/bar-tray";
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
+  import Workspaces from "@domicile-svelte/bar-workspaces";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
   import { Capturing, picture, Portals } from "@domicile-svelte/portals";
@@ -118,8 +119,8 @@
     "Meta+End": () => layout?.moveToEdge("last"),
     "Meta+Ctrl+h": () => layout?.moveColumn("left"),
     "Meta+Ctrl+l": () => layout?.moveColumn("right"),
-    "Meta+Ctrl+j": () => layout?.moveWindow("down"),
-    "Meta+Ctrl+k": () => layout?.moveWindow("up"),
+    "Meta+Ctrl+j": () => layout?.moveWindowOrToWorkspace("down"),
+    "Meta+Ctrl+k": () => layout?.moveWindowOrToWorkspace("up"),
     "Meta+Ctrl+Left": () => layout?.moveColumn("left"),
     "Meta+Ctrl+Right": () => layout?.moveColumn("right"),
     "Meta+Ctrl+Down": () => layout?.moveWindow("down"),
@@ -130,6 +131,15 @@
     "Meta+Shift+L": () => layout?.moveColumn("right"),
     "Meta+Shift+J": () => layout?.moveWindow("down"),
     "Meta+Shift+K": () => layout?.moveWindow("up"),
+    "Meta+u": () => layout?.focusWorkspace("down"),
+    "Meta+i": () => layout?.focusWorkspace("up"),
+    "Alt+Tab": () => layout?.focusWorkspace("previous"),
+    ...Object.fromEntries(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((number) => [
+        [`Meta+${number}`, () => layout?.focusWorkspace(number)],
+        [`Meta+Ctrl+${number}`, () => layout?.moveToWorkspace(number)],
+      ]),
+    ),
     "Meta+comma": () => layout?.consume(),
     "Meta+period": () => layout?.expel(),
     "Meta+bracketleft": () => layout?.consumeOrExpel("left"),
@@ -175,7 +185,29 @@
     action();
     return Ok("ran");
   };
+  const workspace = (word: string | undefined): number | "up" | "down" | undefined =>
+    word === "up" || word === "down" ? word : Number(word) >= 1 ? Number(word) : undefined;
   const commands: Record<string, Command> = {
+    workspace: {
+      usage: "workspace <number>|up|down|previous",
+      description: "Show a workspace.",
+      run: ([word]) => {
+        const target = word === "previous" ? word : workspace(word);
+        return target === undefined
+          ? Err("workspace takes a number, up, down or previous")
+          : ran(() => layout?.focusWorkspace(target));
+      },
+    },
+    "move-to-workspace": {
+      usage: "move-to-workspace <number>|up|down",
+      description: "Move the active column to a workspace.",
+      run: ([word]) => {
+        const target = workspace(word);
+        return target === undefined
+          ? Err("move-to-workspace takes a number, up or down")
+          : ran(() => layout?.moveToWorkspace(target));
+      },
+    },
     focus: {
       usage: "focus left|right|up|down",
       description: "Focus the neighbor of the active window.",
@@ -328,7 +360,10 @@
      unlock reaches a window not yet shown again. -->
 <div class="desktop" style:background-image={background.url === undefined ? undefined : `url("${background.url}")`}>
   <Bar>
-    {#snippet left()}<Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />{/snippet}
+    {#snippet left()}
+      <Workspaces workspaces={layout?.listWorkspaces() ?? []} onpick={(number) => layout?.focusWorkspace(number)} />
+      <Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />
+    {/snippet}
     {#snippet center()}<WindowTitle />{/snippet}
     {#snippet right()}
       <Capturing />

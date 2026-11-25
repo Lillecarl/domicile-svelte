@@ -1,7 +1,7 @@
 /**
- * The browser windows and their columns, as kept across a restart. Native
- * windows end with the session and are left out. Window ids are no use here:
- * the engine counts them from 1 each time it starts.
+ * The browser windows and the columns, as kept across a restart. Browser
+ * windows' ids are no use here: the engine counts them from 1 each time it
+ * starts. A native window's key is for the shell reload it is open over.
  */
 import { type Columns, columnOf } from "./columns";
 
@@ -14,10 +14,18 @@ export type SavedPage = {
   readonly appId: string;
 };
 
-/** Windows are indexes into `pages`. */
+type SavedColumn = {
+  readonly windows: readonly (number | string)[];
+  readonly width: number;
+  readonly full: boolean;
+};
+
+/** Windows are indexes into `pages`, or a native window's key. */
 export type Session = {
   readonly pages: readonly SavedPage[];
-  readonly columns: readonly { readonly windows: readonly number[]; readonly width: number; readonly full: boolean }[];
+  readonly workspaces: readonly (readonly SavedColumn[])[];
+  /** The workspace shown. */
+  readonly at: number;
   readonly parked: readonly number[];
 };
 
@@ -58,7 +66,12 @@ export const savedOf = (page: Page): SavedPage | undefined => {
   return kept && profile !== undefined ? { url, title, profile, isApp, appId } : undefined;
 };
 
-export const sessionOf = (pages: readonly Asleep[], columns: Columns, parked: readonly string[]): Session => {
+export const sessionOf = (
+  pages: readonly Asleep[],
+  native: readonly string[],
+  strips: { readonly workspaces: readonly Columns[]; readonly at: number },
+  parked: readonly string[],
+): Session => {
   const index = new Map(pages.map(({ key }, at) => [key, at]));
   const indexes = (keys: readonly string[]) =>
     keys.flatMap((key) => {
@@ -67,9 +80,16 @@ export const sessionOf = (pages: readonly Asleep[], columns: Columns, parked: re
     });
   return {
     pages: pages.map(({ url, title, profile, isApp, appId }) => ({ url, title, profile, isApp, appId })),
-    columns: columns
-      .map(({ windows, width, full }) => ({ windows: indexes(windows), width, full }))
-      .filter(({ windows }) => windows.length > 0),
+    workspaces: strips.workspaces.map((columns) =>
+      columns
+        .map(({ windows, width, full }) => ({
+          windows: windows.flatMap((key): (number | string)[] => (native.includes(key) ? [key] : indexes([key]))),
+          width,
+          full,
+        }))
+        .filter(({ windows }) => windows.length > 0),
+    ),
+    at: strips.at,
     parked: indexes(parked),
   };
 };
@@ -92,19 +112,27 @@ export const parseSession = (text: string | null): Session | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
-  const { pages, columns, parked } = value;
-  if (!Array.isArray(pages) || !pages.every(isSavedPage) || !Array.isArray(columns) || !Array.isArray(parked)) {
+  // A session saved without workspaces has one.
+  const { pages, columns, workspaces = [columns], at = 0, parked } = value;
+  if (
+    !Array.isArray(pages) ||
+    !pages.every(isSavedPage) ||
+    !Array.isArray(workspaces) ||
+    !Array.isArray(parked) ||
+    typeof at !== "number"
+  ) {
     return undefined;
   }
   const isIndex = (at: unknown) => typeof at === "number" && at in pages;
   const isColumn = (column: unknown) =>
     isRecord(column) &&
     Array.isArray(column["windows"]) &&
-    column["windows"].every(isIndex) &&
+    column["windows"].every((each) => typeof each === "string" || isIndex(each)) &&
     typeof column["width"] === "number" &&
     column["width"] > 0 &&
     typeof column["full"] === "boolean";
-  return columns.every(isColumn) && parked.every(isIndex) ? (value as Session) : undefined;
+  const isStrip = (strip: unknown) => Array.isArray(strip) && strip.every(isColumn);
+  return workspaces.every(isStrip) && parked.every(isIndex) ? { pages, workspaces, at, parked } : undefined;
 };
 
 /** The sleeping page `page` is: an app by its id, any other by its address. */
@@ -125,7 +153,8 @@ export const sleeperOf = <T extends SavedPage>(asleep: readonly T[], page: Saved
 export const restored = (
   session: Session,
   open: readonly { readonly key: string; readonly page: SavedPage }[],
-): { asleep: Asleep[]; columns: Columns; parked: string[] } => {
+  native: readonly string[] = [],
+): { asleep: Asleep[]; workspaces: Columns[]; at: number; parked: string[] } => {
   const keys: (string | undefined)[] = session.pages.map(() => undefined);
   const adopt = (same: (saved: SavedPage, page: SavedPage) => boolean) => {
     for (const { key, page } of open) {
@@ -143,7 +172,18 @@ export const restored = (
   const keyed = (at: number) => keys[at] ?? `asleep:${at}`;
   return {
     asleep: session.pages.flatMap((page, at) => (keys[at] === undefined ? [{ ...page, key: keyed(at) }] : [])),
-    columns: session.columns.map(({ windows, width, full }) => ({ windows: windows.map(keyed), width, full })),
+    workspaces: session.workspaces.map((columns) =>
+      columns
+        .map(({ windows, width, full }) => ({
+          windows: windows.flatMap((each) =>
+            typeof each === "number" ? [keyed(each)] : native.includes(each) ? [each] : [],
+          ),
+          width,
+          full,
+        }))
+        .filter(({ windows }) => windows.length > 0),
+    ),
+    at: session.at,
     parked: session.parked.map(keyed),
   };
 };
