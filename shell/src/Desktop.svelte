@@ -4,6 +4,7 @@
   import { Bar } from "@domicile-svelte/bar";
   import Cast from "@domicile-svelte/bar-cast";
   import Clock from "@domicile-svelte/bar-clock";
+  import Downloads from "@domicile-svelte/bar-downloads";
   import Extensions from "@domicile-svelte/bar-extensions";
   import Keymap from "@domicile-svelte/bar-keymap";
   import Monitor from "@domicile-svelte/bar-monitor";
@@ -66,6 +67,7 @@
   let cast = $state<ReturnType<typeof Cast>>();
   // The TV could show a toast.
   let isCasting = $state(false);
+  let downloads = $state<ReturnType<typeof Downloads>>();
   let monitor = $state<ReturnType<typeof Monitor>>();
   let notifications = $state<ReturnType<typeof Notifications>>();
 
@@ -250,6 +252,11 @@
       description: "Open the panel that casts to TVs, or close it.",
       run: () => ran(() => cast?.toggle()),
     },
+    downloads: {
+      usage: "downloads",
+      description: "Open the list of downloads, or close it.",
+      run: () => ran(() => downloads?.toggle()),
+    },
     monitor: {
       usage: "monitor",
       description: "Open the system monitor, or close it.",
@@ -327,6 +334,7 @@
       <Capturing />
       <Monitor bind:this={monitor} onclose={() => layout?.refocus()} />
       <Volume />
+      <Downloads bind:this={downloads} onclose={() => layout?.refocus()} />
       <Extensions onclose={() => layout?.refocus()} />
       <Tray icon={apps.icon} onclose={() => layout?.refocus()} />
       <Cast bind:this={cast} oncasting={(casting) => (isCasting = casting)} onclose={() => layout?.refocus()} />

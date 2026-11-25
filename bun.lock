@@ -45,6 +45,17 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/bar-downloads": {
+      "name": "@domicile-svelte/bar-downloads",
+      "dependencies": {
+        "@domicile-svelte/bar": "workspace:*",
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/bar-extensions": {
       "name": "@domicile-svelte/bar-extensions",
       "dependencies": {
@@ -205,6 +216,7 @@
         "@domicile-svelte/bar": "workspace:*",
         "@domicile-svelte/bar-cast": "workspace:*",
         "@domicile-svelte/bar-clock": "workspace:*",
+        "@domicile-svelte/bar-downloads": "workspace:*",
         "@domicile-svelte/bar-extensions": "workspace:*",
         "@domicile-svelte/bar-keymap": "workspace:*",
         "@domicile-svelte/bar-monitor": "workspace:*",
@@ -239,6 +251,8 @@
     "@domicile-svelte/bar-cast": ["@domicile-svelte/bar-cast@workspace:packages/bar-cast"],
 
     "@domicile-svelte/bar-clock": ["@domicile-svelte/bar-clock@workspace:packages/bar-clock"],
+
+    "@domicile-svelte/bar-downloads": ["@domicile-svelte/bar-downloads@workspace:packages/bar-downloads"],
 
     "@domicile-svelte/bar-extensions": ["@domicile-svelte/bar-extensions@workspace:packages/bar-extensions"],
 
