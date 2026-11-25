@@ -9,8 +9,7 @@
     }
   },
   "scripts": {
-    "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun test"
+    "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@domicile-svelte/bar": "workspace:*",

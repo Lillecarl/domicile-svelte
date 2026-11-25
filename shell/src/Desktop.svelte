@@ -7,6 +7,7 @@
   import Clock from "@domicile-svelte/bar-clock";
   import Downloads from "@domicile-svelte/bar-downloads";
   import Extensions from "@domicile-svelte/bar-extensions";
+  import Idle from "@domicile-svelte/bar-idle";
   import Keymap from "@domicile-svelte/bar-keymap";
   import Monitor from "@domicile-svelte/bar-monitor";
   import Notifications from "@domicile-svelte/bar-notifications";
@@ -395,6 +396,7 @@
 <div class="desktop" style:background-image={background.url === undefined ? undefined : `url("${background.url}")`}>
   <Bar>
     {#snippet left()}
+      <Idle onclicked={() => layout?.refocus()} />
       <Workspaces workspaces={layout?.listWorkspaces() ?? []} onpick={(number) => layout?.focusWorkspace(number)} />
       <Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />
     {/snippet}

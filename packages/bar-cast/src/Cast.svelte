@@ -7,10 +7,8 @@
 <script lang="ts">
   import { casting, CastMode, type Cast, type CastTarget, engineCast } from "@domicile-desktop/sdk/cast";
   import { BarItem } from "@domicile-svelte/bar";
-  import { listen, useDomicile, watch } from "@domicile-svelte/svelte";
+  import { holdAwake, listen, useDomicile, watch } from "@domicile-svelte/svelte";
   import { untrack } from "svelte";
-
-  import { holdAwake } from "./hold";
 
   const {
     onclose,

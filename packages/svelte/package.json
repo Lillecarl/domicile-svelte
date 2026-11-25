@@ -9,7 +9,8 @@
     }
   },
   "scripts": {
-    "check": "tsc -p tsconfig.json"
+    "check": "tsc -p tsconfig.json",
+    "test": "bun test"
   },
   "peerDependencies": {
     "@cprussin/option-result": "^2.0.1",
