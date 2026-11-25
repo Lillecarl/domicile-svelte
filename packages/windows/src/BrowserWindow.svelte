@@ -13,12 +13,15 @@
     WEBVIEW_DIALOG_WITHDRAWN_EVENT,
     WEBVIEW_EXTERNAL_APP_EVENT,
     WEBVIEW_EXTERNAL_APP_WITHDRAWN_EVENT,
+    WEBVIEW_FAVICON_CHANGE_EVENT,
     WEBVIEW_FILE_CHOOSER_EVENT,
     WEBVIEW_FOCUS_REQUEST_EVENT,
     WEBVIEW_GUEST_FOCUS_EVENT,
     WEBVIEW_GUEST_KEYDOWN_EVENT,
     WEBVIEW_IDENTITY_EVENT,
     WEBVIEW_IDENTITY_WITHDRAWN_EVENT,
+    WEBVIEW_LOAD_PROGRESS_CHANGE_EVENT,
+    WEBVIEW_LOADING_CHANGE_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
     WEBVIEW_PAGE_FAILURE_CHANGE_EVENT,
     WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT,
@@ -46,6 +49,8 @@
   import { appIn, externalAppAsk } from "./external-app";
   import Find from "./Find.svelte";
   import PageAsk from "./PageAsk.svelte";
+  import PageButtons from "./PageButtons.svelte";
+  import PageHints from "./PageHints.svelte";
   import PagePicker from "./PagePicker.svelte";
   import PageProblem from "./PageProblem.svelte";
   import { pageMenu } from "./page-menu";
@@ -102,6 +107,9 @@
   let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
   let finding = $state(false);
   let zoom = $state(1);
+  let loading = $state(false);
+  let loaded = $state(0);
+  let favicon = $state("");
   let problem = $state.raw<Problem>();
   let problemBox = $state<ReturnType<typeof PageProblem> | null>();
   let finder = $state<ReturnType<typeof Find> | null>();
@@ -187,6 +195,18 @@
     readProblem();
     view.addEventListener(WEBVIEW_PAGE_FAILURE_CHANGE_EVENT, readProblem);
     view.addEventListener(WEBVIEW_RENDER_PROCESS_CHANGE_EVENT, readProblem);
+    const readLoading = () => {
+      loading = view.loading;
+      loaded = view.loadProgress;
+    };
+    readLoading();
+    view.addEventListener(WEBVIEW_LOADING_CHANGE_EVENT, readLoading);
+    view.addEventListener(WEBVIEW_LOAD_PROGRESS_CHANGE_EVENT, readLoading);
+    const readFavicon = () => {
+      favicon = view.favicon;
+    };
+    readFavicon();
+    view.addEventListener(WEBVIEW_FAVICON_CHANGE_EVENT, readFavicon);
     const readZoom = () => (zoom = view.zoom);
     readZoom();
     view.addEventListener(WEBVIEW_ZOOM_CHANGE_EVENT, readZoom);
@@ -463,6 +483,7 @@
         go(typed);
       }}
     >
+      {#if page !== undefined}<PageButtons view={page} {loading} {onmenu} />{/if}
       <!-- A page may take the right click that opens this menu too. -->
       <button
         type="button"
@@ -473,6 +494,15 @@
       >
         {"\u{f033e}"}
       </button>
+      {#if favicon !== ""}
+        {#key favicon}
+          <img
+            src={favicon}
+            alt=""
+            onerror={(event) => event.currentTarget instanceof HTMLElement && (event.currentTarget.hidden = true)}
+          />
+        {/key}
+      {/if}
       <input
         bind:this={address}
         bind:value={typed}
@@ -485,9 +515,11 @@
           {Math.round(zoom * 100)}%
         </button>
       {/if}
+      {#if loading}<div class="progress" style:width="{loaded * 100}%"></div>{/if}
     </form>
   {/if}
   <div class="page" bind:this={frame}>
+    {#if page !== undefined}<PageHints view={page} />{/if}
     {#if request !== undefined}<Permission {request} />{/if}
     {#if problem !== undefined && page !== undefined}
       <PageProblem bind:this={problemBox} {problem} view={page} />
@@ -539,6 +571,7 @@
   }
 
   form {
+    position: relative;
     display: flex;
     gap: 4px;
     padding: 4px;
@@ -569,6 +602,27 @@
     font:
       13px "Hack Nerd Font",
       monospace;
+  }
+
+  img {
+    align-self: center;
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
+  }
+
+  img[hidden] {
+    display: none;
+  }
+
+  .progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: #89b4fa;
+    transition: width 0.2s;
+    pointer-events: none;
   }
 
   .page {
