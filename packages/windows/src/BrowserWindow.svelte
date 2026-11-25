@@ -20,6 +20,7 @@
     WEBVIEW_IDENTITY_EVENT,
     WEBVIEW_IDENTITY_WITHDRAWN_EVENT,
     WEBVIEW_PAGE_CHANGE_EVENT,
+    WEBVIEW_PAGE_FAILURE_CHANGE_EVENT,
     WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT,
     WEBVIEW_PERMISSION_REQUEST_EVENT,
     WEBVIEW_PERMISSION_REQUEST_WITHDRAWN_EVENT,
@@ -27,6 +28,7 @@
     WEBVIEW_PICKER_WITHDRAWN_EVENT,
     WEBVIEW_PROMPT_EVENT,
     WEBVIEW_PROMPT_WITHDRAWN_EVENT,
+    WEBVIEW_RENDER_PROCESS_CHANGE_EVENT,
     WEBVIEW_SIGN_IN_EVENT,
     WEBVIEW_SIGN_IN_WITHDRAWN_EVENT,
     WEBVIEW_ZOOM_CHANGE_EVENT,
@@ -45,9 +47,11 @@
   import Find from "./Find.svelte";
   import PageAsk from "./PageAsk.svelte";
   import PagePicker from "./PagePicker.svelte";
+  import PageProblem from "./PageProblem.svelte";
   import { pageMenu } from "./page-menu";
   import Permission, { type Request } from "./Permission.svelte";
   import { asksTo, permissionMenu } from "./permissions";
+  import { type Problem, problemOf } from "./problem";
   import { promptAsk } from "./prompt";
   import { identityAsk, signInAsk } from "./sign-in";
   import { zoomedIn, zoomedOut } from "./zoom";
@@ -98,6 +102,8 @@
   let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
   let finding = $state(false);
   let zoom = $state(1);
+  let problem = $state.raw<Problem>();
+  let problemBox = $state<ReturnType<typeof PageProblem> | null>();
   let finder = $state<ReturnType<typeof Find> | null>();
   let picking = $state.raw<DomicilePickerEvent>();
   let picker = $state<ReturnType<typeof PagePicker> | null>();
@@ -170,6 +176,17 @@
       shown = view.url;
     };
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
+    const readProblem = () => {
+      const had = hasKeyboard();
+      const was = problem;
+      problem = problemOf(view);
+      if (problem !== was) {
+        regain(had);
+      }
+    };
+    readProblem();
+    view.addEventListener(WEBVIEW_PAGE_FAILURE_CHANGE_EVENT, readProblem);
+    view.addEventListener(WEBVIEW_RENDER_PROCESS_CHANGE_EVENT, readProblem);
     const readZoom = () => (zoom = view.zoom);
     readZoom();
     view.addEventListener(WEBVIEW_ZOOM_CHANGE_EVENT, readZoom);
@@ -322,6 +339,7 @@
       asking = [];
       picking = undefined;
       finding = false;
+      problem = undefined;
     };
   };
 
@@ -353,6 +371,8 @@
       shown.focus();
     } else if (picking !== undefined) {
       picker?.focus();
+    } else if (problem !== undefined) {
+      problemBox?.focus();
     } else if (chrome && blank(page?.url ?? "")) {
       address?.focus();
       address?.select();
@@ -404,6 +424,15 @@
     }
   };
 
+  // The page's keys, while what the shell draws over it has the keyboard.
+  const keydown = (event: KeyboardEvent) => {
+    const binding = event.defaultPrevented ? undefined : bindings[chordOf(event)];
+    if (binding !== undefined) {
+      event.preventDefault();
+      binding();
+    }
+  };
+
   const permissionsOf = (view: Page) =>
     permissionMenu(view.sitePermissions(), (permission, setting) => view.setSitePermission(permission, setting));
 
@@ -425,7 +454,8 @@
   };
 </script>
 
-<div class="browser" onfocusin={onfocus}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="browser" onfocusin={onfocus} onkeydown={keydown}>
   {#if chrome}
     <form
       onsubmit={(event) => {
@@ -459,6 +489,9 @@
   {/if}
   <div class="page" bind:this={frame}>
     {#if request !== undefined}<Permission {request} />{/if}
+    {#if problem !== undefined && page !== undefined}
+      <PageProblem bind:this={problemBox} {problem} view={page} />
+    {/if}
     {#if finding && page !== undefined}
       <Find
         bind:this={finder}
