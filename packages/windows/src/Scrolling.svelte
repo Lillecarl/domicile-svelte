@@ -71,6 +71,7 @@
     zoomFor,
   } from "./overview";
   import { chooserOf } from "./page-files";
+  import { confinedTo, confineFor, followPointerLock } from "./pointer";
   import { popupsOf } from "./popups";
   import Sleeper from "./Sleeper.svelte";
   import { readSession, sessionWriter } from "./session-file";
@@ -94,7 +95,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, capture, extensions, files, session: lock, windows } = useDomicile();
+  const { browser, capture, extensions, files, pointer, session: lock, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const pages = watch(browser, "change", () => browser.windows);
@@ -530,6 +531,7 @@
     const next = neighbor(columns, active, direction);
     if (next !== undefined) {
       focus(next);
+      void warp();
     }
   };
 
@@ -550,6 +552,7 @@
     const next = edge(columns, active, end);
     if (next !== undefined) {
       focus(next);
+      void warp();
     }
   };
 
@@ -735,8 +738,7 @@
     }, HIDDEN_MS);
   };
 
-  /** Bring `key` back, parked or not, and give it the keyboard. */
-  export const show = async (key: string) => {
+  const bring = async (key: string) => {
     overview = false;
     if (parked.includes(key)) {
       parked = parked.filter((each) => each !== key);
@@ -744,6 +746,12 @@
       await tick();
     }
     focus(key);
+  };
+
+  /** Bring `key` back, parked or not, and give it the keyboard. */
+  export const show = async (key: string) => {
+    await bring(key);
+    await warp();
   };
 
   /** Every open window, the strip's first and then the parked. */
@@ -913,6 +921,72 @@
     });
   });
 
+  // Where a window is once it settles, in the page.
+  let viewElement = $state<HTMLElement>();
+  const boxOf = (key: string): Box | undefined => {
+    if (key === covering) {
+      return { x: 0, y: 0, width: innerWidth, height: innerHeight };
+    }
+    const corner = viewElement?.getBoundingClientRect();
+    const page = (pages.current ?? []).find((each) => keyOf(each) === key);
+    const floating = page !== undefined && floats(page) && !parked.includes(key);
+    const box = floating ? floatBox(page) : boxes.get(key);
+    return corner === undefined || box === undefined
+      ? undefined
+      : { ...box, x: corner.x + box.x - (floating ? 0 : scroll), y: corner.y + box.y };
+  };
+
+  $effect(() => followPointerLock(windows));
+
+  // Held once the engine holds it, and let go when the window that asked loses
+  // the keyboard.
+  const confined = $derived(confineFor(list.current, focused.current));
+  const confinedKey = $derived(confined?.appId);
+  const confinement = $derived.by(() => {
+    const box = confined === undefined || overview ? undefined : boxOf(confined.appId);
+    return confined === undefined || box === undefined ? "[]" : JSON.stringify(confinedTo(confined, box));
+  });
+  const isConfined = $derived(confinement !== "[]");
+  $effect(() => {
+    const key = confinedKey;
+    if (key === undefined || !isConfined) {
+      return undefined;
+    }
+    let held = true;
+    let said = false;
+    const stop = $effect.root(() => {
+      $effect(() => {
+        pointer
+          .confine(JSON.parse(confinement) as Box[])
+          .then(() => {
+            if (held && !said) {
+              said = true;
+              windows.pointerConstrained(key, true);
+            }
+          })
+          .catch((error: unknown) => console.error("[windows] confining the pointer", error));
+      });
+    });
+    return () => {
+      held = false;
+      stop();
+      pointer.confine([]).catch((error: unknown) => console.error("[windows] letting the pointer go", error));
+      if (said) {
+        windows.pointerConstrained(key, false);
+      }
+    };
+  });
+
+  // niri's warp-mouse-to-focus: to the middle of a window focused from the
+  // keyboard, unless the pointer is over it.
+  const warp = async () => {
+    await tick();
+    const box = active === undefined || overview ? undefined : boxOf(active);
+    if (box !== undefined) {
+      pointer.warp(box.x + box.width / 2, box.y + box.height / 2, box);
+    }
+  };
+
   // A page's context menu. Drawn out of its tile, whose transform and clip
   // would place it.
   let menu = $state.raw<{ entries: Entry[]; x: number; y: number }>();
@@ -1060,7 +1134,7 @@
     } else if (key === undefined) {
       toggleOverview();
     } else {
-      void show(key);
+      void bring(key);
     }
   };
 
@@ -1117,7 +1191,7 @@
   {/if}
 {/snippet}
 
-<div class="view" bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
+<div class="view" bind:this={viewElement} bind:clientWidth={viewWidth} bind:clientHeight={viewHeight}>
   <!-- Two append-only lists, so no element ever moves in the document: a
        moved <webview> reconnects, and its page shows in one view at a time. -->
   <div
