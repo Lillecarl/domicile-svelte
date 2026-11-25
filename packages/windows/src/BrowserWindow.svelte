@@ -29,6 +29,9 @@
     WEBVIEW_PROMPT_WITHDRAWN_EVENT,
     WEBVIEW_SIGN_IN_EVENT,
     WEBVIEW_SIGN_IN_WITHDRAWN_EVENT,
+    WEBVIEW_ZOOM_CHANGE_EVENT,
+    WEBVIEW_ZOOM_IN_REQUEST_EVENT,
+    WEBVIEW_ZOOM_OUT_REQUEST_EVENT,
   } from "@domicile-desktop/sdk/webview-element";
   import { commandFor, extensionItemsOf, runsCommands } from "@domicile-svelte/extensions";
   import type { Entry } from "@domicile-svelte/menu";
@@ -47,6 +50,7 @@
   import { asksTo, permissionMenu } from "./permissions";
   import { promptAsk } from "./prompt";
   import { identityAsk, signInAsk } from "./sign-in";
+  import { zoomedIn, zoomedOut } from "./zoom";
 
   const {
     window: browserWindow,
@@ -93,6 +97,7 @@
   // What the page asks, oldest first; the engine sends one of a kind at a time.
   let asking = $state.raw<readonly { kind: string; event: Event; ask: Ask }[]>([]);
   let finding = $state(false);
+  let zoom = $state(1);
   let finder = $state<ReturnType<typeof Find> | null>();
   let picking = $state.raw<DomicilePickerEvent>();
   let picker = $state<ReturnType<typeof PagePicker> | null>();
@@ -165,6 +170,11 @@
       shown = view.url;
     };
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
+    const readZoom = () => (zoom = view.zoom);
+    readZoom();
+    view.addEventListener(WEBVIEW_ZOOM_CHANGE_EVENT, readZoom);
+    view.addEventListener(WEBVIEW_ZOOM_IN_REQUEST_EVENT, zoomIn);
+    view.addEventListener(WEBVIEW_ZOOM_OUT_REQUEST_EVENT, zoomOut);
     view.addEventListener(WEBVIEW_GUEST_FOCUS_EVENT, () => onfocus());
     view.addEventListener(WEBVIEW_PAGE_FULLSCREEN_CHANGE_EVENT, () => onfullscreen(view.pageFullscreen));
     view.addEventListener(WEBVIEW_FOCUS_REQUEST_EVENT, () => onfocusrequest());
@@ -358,6 +368,10 @@
     }
   };
 
+  const zoomIn = () => page?.setZoom(zoomedIn(page.zoom));
+  const zoomOut = () => page?.setZoom(zoomedOut(page.zoom));
+  const unzoom = () => page?.setZoom(1);
+
   // The guest has none of Chrome's own keys.
   const bindings: Record<string, () => void> = {
     "Ctrl+l": editAddress,
@@ -365,6 +379,12 @@
       finding = true;
       finder?.focus();
     },
+    // The key plus is on, with Shift or without.
+    "Ctrl++": zoomIn,
+    "Ctrl+=": zoomIn,
+    "Ctrl+Shift++": zoomIn,
+    "Ctrl+-": zoomOut,
+    "Ctrl+0": unzoom,
     "Ctrl+r": () => page?.reload(),
     F11: () => onfullscreen(!fullscreen),
     "Alt+ArrowLeft": () => page?.goBack(),
@@ -430,6 +450,11 @@
         spellcheck="false"
         placeholder="Search or type a URL"
       />
+      {#if Math.abs(zoom - 1) > 0.001}
+        <button type="button" title="Reset the zoom" onmousedown={(event) => event.preventDefault()} onclick={unzoom}>
+          {Math.round(zoom * 100)}%
+        </button>
+      {/if}
     </form>
   {/if}
   <div class="page" bind:this={frame}>
