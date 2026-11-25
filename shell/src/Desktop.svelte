@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Err, Ok, type Result } from "@cprussin/option-result";
   import type { CommandRan, ShellCommand } from "@domicile-desktop/sdk/shell-command";
+  import { type SystemError, SystemErrorKind } from "@domicile-desktop/sdk/system";
   import { Bar } from "@domicile-svelte/bar";
   import Cast from "@domicile-svelte/bar-cast";
   import Clock from "@domicile-svelte/bar-clock";
@@ -100,6 +101,21 @@
     }
   };
 
+  const logged = <T extends {}>(what: string, asked: Promise<Result<T, SystemError>>) => {
+    asked
+      .then((answered) =>
+        answered.match({
+          Ok: () => undefined,
+          Err: (error) => {
+            if (error.kind !== SystemErrorKind.Canceled) {
+              console.error("[shell]", what, error);
+            }
+          },
+        }),
+      )
+      .catch((error: unknown) => console.error("[shell]", what, error));
+  };
+
   const bindings: Record<string, () => void> = {
     "Meta+Return": launch(["kitty"]),
     // croshome installs `domicile-quit`: SIGTERM to the launcher.
@@ -163,6 +179,8 @@
     "Meta+f": () => layout?.maximize(),
     "Meta+Shift+F": () => layout?.toggleFullscreen(),
     "Meta+c": () => layout?.center(),
+    Print: () => logged("screenshot", domicile.capture.screenshot()),
+    "Shift+Print": () => logged("recording", domicile.capture.screenRecord()),
   };
 
   $effect(() => {
