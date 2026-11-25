@@ -796,6 +796,7 @@
   const stillImages: Record<string, HTMLImageElement | null> = {};
   const stills = new SvelteMap<string, string>();
   let drawnBefore = new Map<string, DOMRect>();
+  let measured = $state(0);
 
   // Decoded before it is shown, so its first frame has it.
   const stillOf = async (key: string): Promise<string | undefined> => {
@@ -877,14 +878,15 @@
           drawnBefore.set(key, tile.getBoundingClientRect());
         }
       }
+      measured += 1;
     });
   });
 
+  // Once per measurement, not on what the measurement reads: an effect before
+  // this one in the same flush writes `columns`, and this would then run before
+  // they are measured, and ease from where the last move began.
   $effect(() => {
-    void boxes;
-    void scroll;
-    void parkedBoxes;
-    void covering;
+    void measured;
     untrack(() => {
       if (reducedMotion.current) {
         return;
