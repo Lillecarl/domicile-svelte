@@ -83,7 +83,10 @@
     gap = 8,
     settle = 220,
     letGoAfter = 5 * 60_000,
+    warps = false,
   }: {
+    /** Whether the pointer goes to a window focused from the keyboard, as niri's warp-mouse-to-focus. */
+    warps?: boolean;
     /** How long a tile takes to ease into a new box, in milliseconds. */
     settle?: number;
     /** How long a page is out of view before the engine may unload it, in milliseconds. */
@@ -979,9 +982,11 @@
     };
   });
 
-  // niri's warp-mouse-to-focus: to the middle of a window focused from the
-  // keyboard, unless the pointer is over it.
+  // To the middle of the window, unless the pointer is over it.
   const warp = async () => {
+    if (!warps) {
+      return;
+    }
     await tick();
     const box = active === undefined || overview ? undefined : boxOf(active);
     if (box !== undefined) {
