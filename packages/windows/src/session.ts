@@ -1,9 +1,11 @@
 /**
  * The browser windows and the columns, as kept across a restart. Browser
  * windows' ids are no use here: the engine counts them from 1 each time it
- * starts. A native window's key is for the shell reload it is open over.
+ * starts. A native window keeps its key over a shell reload, and its process
+ * starts again after a restart (native.ts).
  */
 import { type Columns, columnOf } from "./columns";
+import { isSavedNative, type OpenNative, relaunched, type SavedNative, type Starting } from "./native";
 
 /** A page to open again. */
 export type SavedPage = {
@@ -27,6 +29,8 @@ export type Session = {
   /** The workspace shown. */
   readonly at: number;
   readonly parked: readonly number[];
+  /** The native windows, to start their processes again after a restart. */
+  readonly native: readonly SavedNative[];
 };
 
 /** A saved page with no window yet. */
@@ -68,10 +72,11 @@ export const savedOf = (page: Page): SavedPage | undefined => {
 
 export const sessionOf = (
   pages: readonly Asleep[],
-  native: readonly string[],
+  native: readonly SavedNative[],
   strips: { readonly workspaces: readonly Columns[]; readonly at: number },
   parked: readonly string[],
 ): Session => {
+  const nativeKeys = native.map(({ key }) => key);
   const index = new Map(pages.map(({ key }, at) => [key, at]));
   const indexes = (keys: readonly string[]) =>
     keys.flatMap((key) => {
@@ -83,7 +88,7 @@ export const sessionOf = (
     workspaces: strips.workspaces.map((columns) =>
       columns
         .map(({ windows, width, full }) => ({
-          windows: windows.flatMap((key): (number | string)[] => (native.includes(key) ? [key] : indexes([key]))),
+          windows: windows.flatMap((key): (number | string)[] => (nativeKeys.includes(key) ? [key] : indexes([key]))),
           width,
           full,
         }))
@@ -91,6 +96,7 @@ export const sessionOf = (
     ),
     at: strips.at,
     parked: indexes(parked),
+    native,
   };
 };
 
@@ -113,8 +119,10 @@ export const parseSession = (text: string | null): Session | undefined => {
     return undefined;
   }
   // A session saved without workspaces has one.
-  const { pages, columns, workspaces = [columns], at = 0, parked } = value;
+  const { pages, columns, workspaces = [columns], at = 0, parked, native = [] } = value;
   if (
+    !Array.isArray(native) ||
+    !native.every(isSavedNative) ||
     !Array.isArray(pages) ||
     !pages.every(isSavedPage) ||
     !Array.isArray(workspaces) ||
@@ -132,7 +140,7 @@ export const parseSession = (text: string | null): Session | undefined => {
     column["width"] > 0 &&
     typeof column["full"] === "boolean";
   const isStrip = (strip: unknown) => Array.isArray(strip) && strip.every(isColumn);
-  return workspaces.every(isStrip) && parked.every(isIndex) ? { pages, workspaces, at, parked } : undefined;
+  return workspaces.every(isStrip) && parked.every(isIndex) ? { pages, workspaces, at, parked, native } : undefined;
 };
 
 /** The sleeping page `page` is: an app by its id, any other by its address. */
@@ -147,14 +155,29 @@ export const sleeperOf = <T extends SavedPage>(asleep: readonly T[], page: Saved
 
 /**
  * `session` among the windows open already (after a shell reload, all of
- * them): those keep their keys, and every other page sleeps under a key of
- * its own.
+ * them): those keep their keys, every other page sleeps under a key of its
+ * own, and every other native window is started again.
  */
 export const restored = (
   session: Session,
   open: readonly { readonly key: string; readonly page: SavedPage }[],
-  native: readonly string[] = [],
-): { asleep: Asleep[]; workspaces: Columns[]; at: number; parked: string[] } => {
+  native: readonly OpenNative[] = [],
+): {
+  asleep: Asleep[];
+  workspaces: Columns[];
+  at: number;
+  parked: string[];
+  starting: Starting[];
+  commands: string[][];
+} => {
+  const again = relaunched(session.native, native);
+  // A session saved before its native windows were: a key open now stays.
+  const nativeKey = (key: string) =>
+    session.native.some((each) => each.key === key)
+      ? again.keys.get(key)
+      : native.some((each) => each.key === key)
+        ? key
+        : undefined;
   const keys: (string | undefined)[] = session.pages.map(() => undefined);
   const adopt = (same: (saved: SavedPage, page: SavedPage) => boolean) => {
     for (const { key, page } of open) {
@@ -175,9 +198,13 @@ export const restored = (
     workspaces: session.workspaces.map((columns) =>
       columns
         .map(({ windows, width, full }) => ({
-          windows: windows.flatMap((each) =>
-            typeof each === "number" ? [keyed(each)] : native.includes(each) ? [each] : [],
-          ),
+          windows: windows.flatMap((each) => {
+            if (typeof each === "number") {
+              return [keyed(each)];
+            }
+            const key = nativeKey(each);
+            return key === undefined ? [] : [key];
+          }),
           width,
           full,
         }))
@@ -185,6 +212,8 @@ export const restored = (
     ),
     at: session.at,
     parked: session.parked.map(keyed),
+    starting: again.starting,
+    commands: again.commands,
   };
 };
 

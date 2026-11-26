@@ -25,6 +25,8 @@ const saved = (url: string, more: Partial<Page> = {}) => {
 const A = "https://a.example/";
 const B = "https://b.example/";
 const slack = { isApp: true, appId: "slack", profile: "work" };
+// Two windows of one process.
+const kitty = (key: string) => ({ key, desktopId: "kitty", title: key, pid: 10, pidfdInode: 99, argv: ["kitty"] });
 
 test("private pages, popups and pages that open nothing again are not saved", () => {
   expect(savedOf(page(A))).toBeDefined();
@@ -43,7 +45,7 @@ const session = sessionOf(
     { ...saved(B), key: "browser:2" },
     { ...saved(B, slack), key: "browser:3" },
   ],
-  ["kitty", "kitty-2"],
+  [kitty("kitty"), kitty("kitty-2")],
   {
     workspaces: [
       [columnOfWidth(["kitty", "browser:2"], 0.5), columnOfWidth(["kitty-2"], 0.5)],
@@ -71,26 +73,33 @@ test("text that is no session is none", () => {
   }
 });
 
-test("a session saved without workspaces has one", () => {
+test("a session saved without workspaces or native windows has one workspace and none", () => {
   const { pages, parked, workspaces } = session;
   expect(parseSession(JSON.stringify({ pages, parked, columns: workspaces[1] }))).toEqual({
     pages,
     parked,
     workspaces: [workspaces[1] ?? []],
     at: 0,
+    native: [],
   });
 });
 
-test("on an empty desk every page sleeps in its place", () => {
-  const { asleep, workspaces, at, parked } = restored(session, []);
+test("on an empty desk every page sleeps in its place, and native windows start again", () => {
+  const { asleep, workspaces, at, parked, starting, commands } = restored(session, []);
   expect(asleep.map(({ key, url }) => [key, url])).toEqual([
     ["asleep:0", A],
     ["asleep:1", B],
     ["asleep:2", B],
   ]);
-  expect(workspaces).toEqual([[columnOfWidth(["asleep:1"], 0.5)], [columnOfWidth(["asleep:0"], 0.3)], []]);
+  expect(workspaces).toEqual([
+    [columnOfWidth(["starting:0", "asleep:1"], 0.5), columnOfWidth(["starting:1"], 0.5)],
+    [columnOfWidth(["asleep:0"], 0.3)],
+    [],
+  ]);
   expect(at).toBe(1);
   expect(parked).toEqual(["asleep:2"]);
+  expect(starting.map(({ key }) => key)).toEqual(["starting:0", "starting:1"]);
+  expect(commands).toEqual([["kitty"]]);
 });
 
 test("after a shell reload open windows keep their keys and places", () => {
@@ -101,7 +110,7 @@ test("after a shell reload open windows keep their keys and places", () => {
       // An app is the same one wherever it has gone.
       { key: "browser:8", page: saved("https://b.example/elsewhere", slack) },
     ],
-    ["kitty-2"],
+    [{ key: "kitty-2", pid: 10, pidfdInode: 99 }],
   );
   expect(asleep.map(({ key }) => key)).toEqual(["asleep:1"]);
   expect(workspaces.map((columns) => columns.map(({ windows }) => windows))).toEqual([

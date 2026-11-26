@@ -78,6 +78,7 @@
   import { confinedTo, confineFor, followPointerLock } from "./pointer";
   import { popupsOf } from "./popups";
   import Sleeper from "./Sleeper.svelte";
+  import { argvOf, claimed, type Starting } from "./native";
   import { readSession, sessionWriter } from "./session-file";
   import { type Asleep, parseSession, renamed, restored, savedOf, sessionOf, sleeperOf } from "./session";
   import {
@@ -118,7 +119,7 @@
     gap?: number;
   } = $props();
 
-  const { browser, capture, extensions, files, pointer, session: lock, windows } = useDomicile();
+  const { browser, capture, extensions, files, pointer, processes, session: lock, windows } = useDomicile();
   const list = watch(windows, "change", () => windows.list);
   const focused = watch(windows, "focuschange", () => windows.focused);
   const listed = watch(browser, "change", () => browser.windows);
@@ -253,6 +254,64 @@
     }
   };
 
+  // Each native window's command line, by process, to start it again after a
+  // restart. Read once: a process's command line does not change.
+  const processOf = (window: { pid?: number | undefined; pidfdInode?: number | undefined }) =>
+    window.pid === undefined ? undefined : `${window.pid}:${window.pidfdInode ?? ""}`;
+  const argvs = new SvelteMap<string, readonly string[]>();
+  $effect(() => {
+    for (const window of apps) {
+      const process = processOf(window);
+      if (process === undefined || argvs.has(process)) {
+        continue;
+      }
+      argvs.set(process, []);
+      void files.read(`/proc/${window.pid}/cmdline`).then((read) =>
+        read.match({
+          Ok: (bytes) => {
+            argvs.set(process, argvOf(bytes));
+          },
+          Err: (error) => {
+            console.error("[windows] command line of", window.appId, error);
+          },
+        }),
+      );
+    }
+  });
+
+  // The last session's native windows whose processes were started again,
+  // each in its place until a window of its app opens, or for a while.
+  let starting = $state.raw<Starting[]>([]);
+  const START_LIMIT_MS = 30_000;
+  const isStarting = (key: string) => starting.some((each) => each.key === key);
+  const stopWaiting = (key: string) => {
+    starting = starting.filter((each) => each.key !== key);
+  };
+  let claimedApps = new Set<string>();
+  $effect(() => {
+    const now = apps;
+    untrack(() => {
+      const fresh = now.filter((window) => !claimedApps.has(window.appId));
+      claimedApps = new Set(now.map((window) => window.appId));
+      for (const window of fresh) {
+        const place = claimed(starting, window.desktopId);
+        if (place === undefined) {
+          continue;
+        }
+        const { key: from } = place;
+        const to = window.appId;
+        const rename = (key: string) => (key === from ? to : key);
+        stopWaiting(from);
+        workspaces = workspaces.map((each) => ({ ...each, columns: renamed(each.columns, from, to) }));
+        parked = parked.map(rename);
+        history = history.map(rename);
+        if (active === from) {
+          active = to;
+        }
+      }
+    });
+  });
+
   // A session that cannot be read is not written over.
   let kept = $state.raw<{ text: string | null }>();
   readSession(files, lock)
@@ -287,8 +346,15 @@
       const last = restored(
         session,
         open,
-        apps.map((window) => window.appId),
+        apps.map(({ appId, pid, pidfdInode }) => ({ key: appId, pid, pidfdInode })),
       );
+      starting = last.starting;
+      for (const argv of last.commands) {
+        processes.launch(argv);
+      }
+      setTimeout(() => {
+        starting = starting.filter((each) => !last.starting.includes(each));
+      }, START_LIMIT_MS);
       const placed = new Set(last.workspaces.flat().flatMap((column) => column.windows));
       asleep = last.asleep;
       parked = [...last.parked, ...parked.filter((key) => !last.parked.includes(key))];
@@ -331,7 +397,17 @@
       const saved = savedOf(page);
       return saved === undefined ? [] : [{ ...saved, key: keyOf(page) }];
     });
-    const native = apps.map((window) => window.appId);
+    const native = apps.map((window) => {
+      const process = processOf(window);
+      return {
+        key: window.appId,
+        desktopId: window.desktopId,
+        title: window.title,
+        pid: window.pid,
+        pidfdInode: window.pidfdInode,
+        argv: (process === undefined ? undefined : argvs.get(process)) ?? [],
+      };
+    });
     const strips = {
       workspaces: workspaces.map((each) => each.columns),
       at: workspaces.findIndex(({ id }) => id === shown),
@@ -339,7 +415,7 @@
     write(JSON.stringify(sessionOf([...open, ...asleep], native, strips, parked)));
   };
   $effect(() => {
-    void [pages.current, asleep, workspaces, shown, parked];
+    void [pages.current, asleep, workspaces, shown, parked, apps, argvs.size];
     if (!resumed) {
       return undefined;
     }
@@ -369,9 +445,12 @@
   $effect(() => {
     const out = (key: string) => !parked.includes(key);
     const open = {
-      tiled: [...apps.map((window) => window.appId), ...tiledPages.map(keyOf), ...asleep.map(({ key }) => key)].filter(
-        out,
-      ),
+      tiled: [
+        ...apps.map((window) => window.appId),
+        ...tiledPages.map(keyOf),
+        ...asleep.map(({ key }) => key),
+        ...starting.map(({ key }) => key),
+      ].filter(out),
       floating: (pages.current ?? []).filter(floats).map(keyOf).filter(out),
     };
     const at = active;
@@ -489,6 +568,7 @@
       ...apps.map((window) => window.appId),
       ...(pages.current ?? []).map(keyOf),
       ...asleep.map(({ key }) => key),
+      ...starting.map(({ key }) => key),
     ];
     untrack(() => {
       const closed = present.filter((key) => !now.includes(key));
@@ -564,7 +644,8 @@
   const exists = (key: string) =>
     apps.some((window) => window.appId === key) ||
     (pages.current ?? []).some((page) => keyOf(page) === key) ||
-    asleep.some((each) => each.key === key);
+    asleep.some((each) => each.key === key) ||
+    isStarting(key);
 
   const focus = (key: string) => {
     // The overview has the keyboard, and hands it to the window it closes on.
@@ -572,7 +653,7 @@
       active = key;
       return;
     }
-    if (asleep.some((each) => each.key === key)) {
+    if (asleep.some((each) => each.key === key) || isStarting(key)) {
       active = key;
       releasePage();
       windows.focusShell();
@@ -719,6 +800,8 @@
       browser.close(page.id);
     } else if (active !== undefined && asleep.some(({ key }) => key === active)) {
       doze(active);
+    } else if (active !== undefined && isStarting(active)) {
+      stopWaiting(active);
     } else if (active !== undefined && exists(active)) {
       windows.close(active);
     }
@@ -978,7 +1061,7 @@
 
   // Decoded before it is shown, so its first frame has it.
   const stillOf = async (key: string): Promise<string | undefined> => {
-    if (asleep.some((each) => each.key === key)) {
+    if (asleep.some((each) => each.key === key) || isStarting(key)) {
       return undefined;
     }
     const page = (pages.current ?? []).find((each) => keyOf(each) === key);
@@ -1541,6 +1624,20 @@
         style:height="{box?.height ?? 0}px"
       >
         <Sleeper {page} onwake={() => focus(page.key)} />
+      </div>
+    {/each}
+    {#each starting as window (window.key)}
+      {@const box = boxes.get(window.key) ?? parkedBoxes.get(window.key)}
+      <div
+        class="tile"
+        class:hidden={box === undefined}
+        class:active={window.key === active}
+        bind:this={tiles[window.key]}
+        style:translate={translateOf(window.key, box)}
+        style:width="{box?.width ?? 0}px"
+        style:height="{box?.height ?? 0}px"
+      >
+        <Sleeper page={{ url: window.desktopId, title: window.title }} onwake={() => focus(window.key)} />
       </div>
     {/each}
     {#if overview}
