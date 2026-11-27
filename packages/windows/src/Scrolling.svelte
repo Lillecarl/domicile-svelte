@@ -1254,15 +1254,25 @@
     };
   });
 
-  // To the middle of the window, unless the pointer is over it.
+  // To the middle of the window, when the pointer is over another window and
+  // would take focus back. A pointer over the bar stays where it is.
   const warp = async () => {
     if (!warps) {
       return;
     }
     await tick();
-    const box = active === undefined || overview ? undefined : boxOf(active);
-    if (box !== undefined) {
-      pointer.warp(box.x + box.width / 2, box.y + box.height / 2, box);
+    const to = active;
+    const box = to === undefined || overview ? undefined : boxOf(to);
+    if (box === undefined) {
+      return;
+    }
+    const others = (pages.current ?? []).flatMap((page) => {
+      const key = keyOf(page);
+      const other = key === to ? undefined : boxOf(key);
+      return other === undefined ? [] : [other];
+    });
+    if (others.length > 0) {
+      pointer.warp(box.x + box.width / 2, box.y + box.height / 2, others, box);
     }
   };
 
