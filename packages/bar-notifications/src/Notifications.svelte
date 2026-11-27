@@ -10,6 +10,7 @@
   import { untrack } from "svelte";
 
   import Card from "./Card.svelte";
+  import { byApp, type Grouping } from "./grouping";
   import { arrivals, keyOf, toastMs, toasts, unread } from "./toasting";
 
   const {
@@ -29,9 +30,11 @@
   const MOST = 5;
   const PAUSED = "notifications.paused";
   const SEEN = "notifications.seen";
+  const GROUPING = "notifications.grouping";
 
   // A reloaded shell keeps these.
   let paused = $state(localStorage.getItem(PAUSED) !== null);
+  let grouping = $state<Grouping>(localStorage.getItem(GROUPING) === "app" ? "app" : "newest");
   let seen = $state(Number(localStorage.getItem(SEEN) ?? 0));
   let open = $state(false);
   let up = $state<readonly string[]>([]);
@@ -70,6 +73,7 @@
   });
 
   const history = $derived((list.current ?? []).toReversed());
+  const groups = $derived(byApp(history));
   const shown = $derived(history.filter((each) => up.includes(keyOf(each))).slice(0, MOST));
   const count = $derived(unread(list.current ?? [], seen));
   const label = $derived(
@@ -91,6 +95,10 @@
       open = true;
       up = [];
     }
+  };
+  const group = (by: Grouping) => {
+    grouping = by;
+    localStorage.setItem(GROUPING, by);
   };
   const pause = () => {
     paused = !paused;
@@ -149,6 +157,10 @@
   >
     <header>
       <span class="title">Notifications</span>
+      <span class="grouping" role="group" aria-label="List">
+        <button type="button" aria-pressed={grouping === "newest"} onclick={() => group("newest")}>Newest</button>
+        <button type="button" aria-pressed={grouping === "app"} onclick={() => group("app")}>By app</button>
+      </span>
       <button type="button" onclick={pause}>{paused ? "Resume" : "Pause"}</button>
       <button
         type="button"
@@ -158,7 +170,7 @@
         Clear all
       </button>
     </header>
-    {#each history as notification (keyOf(notification))}
+    {#snippet kept(notification: Notification)}
       <Card
         {notification}
         closeLabel="Clear"
@@ -166,9 +178,33 @@
         onpress={shut}
         ontyped={() => panel?.focus()}
       />
-    {:else}
+    {/snippet}
+    {#if history.length === 0}
       <p>Nothing here.</p>
-    {/each}
+    {:else if grouping === "app"}
+      {#each groups as { app, notifications: sent } (app)}
+        {@const name = app === "" ? "Other apps" : app}
+        <section class="group" aria-label={name}>
+          <div class="group-head">
+            <span class="app">{name}</span>
+            <button
+              type="button"
+              aria-label={`Clear ${name}'s notifications`}
+              onclick={() => notifications.dismiss(sent.map(({ id }) => id))}
+            >
+              Clear
+            </button>
+          </div>
+          {#each sent as notification (keyOf(notification))}
+            {@render kept(notification)}
+          {/each}
+        </section>
+      {/each}
+    {:else}
+      {#each history as notification (keyOf(notification))}
+        {@render kept(notification)}
+      {/each}
+    {/if}
   </div>
 {:else if shown.length > 0}
   <div class="panel" role="status">
@@ -254,6 +290,55 @@
 
   header button:disabled {
     opacity: 0.5;
+  }
+
+  .grouping {
+    display: inline-flex;
+  }
+
+  .grouping button {
+    border-radius: 0;
+    font-size: 11px;
+  }
+
+  .grouping button:first-child {
+    border-radius: 6px 0 0 6px;
+  }
+
+  .grouping button:last-child {
+    border-radius: 0 6px 6px 0;
+  }
+
+  .grouping button[aria-pressed="true"] {
+    background: #585b70;
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #a6adc8;
+    font-size: 12px;
+  }
+
+  .app {
+    flex: 1;
+    font-weight: bold;
+  }
+
+  .group-head button {
+    padding: 2px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: #313244;
+    color: inherit;
+    font: inherit;
   }
 
   p {
