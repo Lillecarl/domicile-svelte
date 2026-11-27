@@ -59,6 +59,7 @@
     scrollTo,
     setFull,
     spans,
+    successor,
     toggleFull,
   } from "./columns";
   import {
@@ -140,6 +141,9 @@
   const tiledPages = $derived((pages.current ?? []).filter((page) => !floats(page)));
 
   let workspaces = $state.raw<Workspaces>([emptyWorkspace(1)]);
+  // The workspaces as the last sync found them, with the windows it dropped:
+  // where a closed window was, for the one that takes its place.
+  let placedBefore: Workspaces = [];
   // The workspace shown, and the one before it, by id.
   let shown = $state(1);
   let shownBefore: number | undefined;
@@ -454,7 +458,10 @@
       floating: (pages.current ?? []).filter(floats).map(keyOf).filter(out),
     };
     const at = active;
-    untrack(() => setWorkspaces(synced(workspaces, open, shown, at, width)));
+    untrack(() => {
+      placedBefore = workspaces;
+      setWorkspaces(synced(workspaces, open, shown, at, width));
+    });
   });
 
   // The active window's workspace is the one shown.
@@ -561,8 +568,10 @@
     return history.find((key) => keys.includes(key)) ?? keys[0];
   };
 
-  // The active window closed: the keyboard goes to the window of its workspace
-  // that held it before, as a closed tab hands it to the tab used last.
+  // The active window closed: the keyboard goes to the window that takes its
+  // place (successor), so it stays where it was and the view need not move;
+  // else, as for a floating window, to the window of its workspace that held
+  // it before.
   $effect(() => {
     const now = [
       ...apps.map((window) => window.appId),
@@ -583,7 +592,9 @@
       if (active === undefined || !closed.includes(active)) {
         return;
       }
-      const next = lastIn(shown);
+      const closedAt = placedBefore.find(({ id }) => id === shown)?.columns ?? [];
+      const taking = successor(closedAt, active);
+      const next = taking !== undefined && now.includes(taking) ? taking : lastIn(shown);
       if (next === undefined) {
         active = undefined;
         windows.focusShell();

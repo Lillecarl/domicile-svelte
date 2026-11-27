@@ -67,6 +67,28 @@ export const neighbor = (columns: Columns, focused: string | undefined, directio
   }
 };
 
+/**
+ * The window that takes `closed`'s place when it closes, from `columns` as
+ * they were with it: the next window in its column, else the one above, else
+ * the column to its right, else the one to its left, in the row it was in
+ * where that column has one. `undefined` when it was the only window, or is
+ * not on the strip.
+ */
+export const successor = (columns: Columns, closed: string): string | undefined => {
+  const at = columnOf(columns, closed);
+  const column = columns[at]?.windows;
+  if (column === undefined) {
+    return undefined;
+  }
+  const row = column.indexOf(closed);
+  const inColumn = column[row + 1] ?? column[row - 1];
+  if (inColumn !== undefined) {
+    return inColumn;
+  }
+  const beside = (columns[at + 1] ?? columns[at - 1])?.windows;
+  return beside?.[Math.min(row, beside.length - 1)];
+};
+
 /** The window in the first or last column, in the row `focused` is in. */
 export const edge = (columns: Columns, focused: string | undefined, end: "first" | "last"): string | undefined => {
   const row = Math.max(0, columns[columnOf(columns, focused)]?.windows.indexOf(focused ?? "") ?? 0);

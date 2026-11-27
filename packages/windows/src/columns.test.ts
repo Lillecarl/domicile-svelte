@@ -16,6 +16,7 @@ import {
   scrollTo,
   setFull,
   spans,
+  successor,
   sync,
   toggleFull,
 } from "./columns";
@@ -90,6 +91,33 @@ describe("neighbor", () => {
   test("edge finds the first and last columns, keeping the row", () => {
     expect(edge(columns, "c", "first")).toBe("a");
     expect(edge(columns, "a", "last")).toBe("d");
+  });
+});
+
+describe("successor", () => {
+  test("the next window in the closed one's column takes its place", () => {
+    expect(successor(of(["a", "b", "c"]), "b")).toBe("c");
+  });
+
+  test("the one above, when it was the column's last", () => {
+    expect(successor(of(["a", "b"]), "b")).toBe("a");
+  });
+
+  test("the column to the right, when it was its column's only window", () => {
+    expect(successor(of(["a"], ["b"], ["c"]), "b")).toBe("c");
+  });
+
+  test("the right column keeps the row where it can", () => {
+    expect(successor(of(["a"], ["b"], ["c", "d"]), "b")).toBe("c");
+  });
+
+  test("the column to the left, when it was the last column", () => {
+    expect(successor(of(["a"], ["b"]), "b")).toBe("a");
+  });
+
+  test("nothing, when it was the only window or is not on the strip", () => {
+    expect(successor(of(["a"]), "a")).toBeUndefined();
+    expect(successor(of(["a"]), "z")).toBeUndefined();
   });
 });
 
