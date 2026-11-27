@@ -1,6 +1,7 @@
 <!--
   Hidden while the config lists one keymap or none, as there is nothing to switch to.
-  A switch, by click or by key, shows the new keymap's name at the pointer for a moment.
+  A switch, by click or by key, shows the new keymap's name at the pointer for a moment,
+  following it as it moves.
 -->
 <script lang="ts">
   import { KeymapChoice } from "@domicile-desktop/sdk/keymap-choice";
@@ -40,9 +41,49 @@
       ),
   );
 
-  // Not state: the effect compares against it without depending on it.
+  // Not state: the effect compares against them without depending on them.
   let before: string | undefined;
+  let shownName = "";
   let hide: ReturnType<typeof setTimeout> | undefined;
+  let stopFollowing: (() => void) | undefined;
+
+  const stopShowing = () => {
+    clearTimeout(hide);
+    stopFollowing?.();
+    stopFollowing = undefined;
+    switched = undefined;
+  };
+
+  // Off the desk, the label stays where the pointer left it.
+  const moved = (at: Point | undefined) => {
+    if (at !== undefined) {
+      switched = { at, name: shownName };
+    }
+  };
+
+  // Follows the pointer until it hides. An engine older than `follow` throws,
+  // and then the label stays where the pointer was.
+  const show = (name: string) => {
+    shownName = name;
+    if (switched !== undefined) {
+      switched = { ...switched, name };
+    }
+    clearTimeout(hide);
+    hide = setTimeout(stopShowing, SHOWN_MS);
+    if (stopFollowing !== undefined) {
+      return;
+    }
+    try {
+      stopFollowing = pointer.follow(moved);
+    } catch (error: unknown) {
+      console.error("could not follow the pointer", error);
+      pointer
+        .position()
+        .then(moved)
+        .catch((failure: unknown) => console.error("could not find the pointer", failure));
+    }
+  };
+
   $effect(() => {
     const name = active?.name;
     if (name === undefined) {
@@ -50,25 +91,11 @@
     }
     const first = before === undefined;
     before = name;
-    if (first) {
-      return;
+    if (!first) {
+      show(name);
     }
-    // Through a promise: an engine older than `position` throws, and only logs.
-    Promise.resolve()
-      .then(() => pointer.position())
-      .then((at) => {
-        if (at === undefined || active?.name !== name) {
-          return;
-        }
-        switched = { at, name };
-        clearTimeout(hide);
-        hide = setTimeout(() => {
-          switched = undefined;
-        }, SHOWN_MS);
-      })
-      .catch((error: unknown) => console.error("could not find the pointer", error));
   });
-  $effect(() => () => clearTimeout(hide));
+  $effect(() => stopShowing);
 
   const failed = (error: unknown) => console.error("could not switch the keymap", error);
 
