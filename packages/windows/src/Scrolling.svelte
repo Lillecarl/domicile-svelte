@@ -375,6 +375,17 @@
       }));
       setWorkspaces(all, workspaceOf(all, active) ?? at + 1);
       shownBefore = undefined;
+      // A page has no compositor focus to follow: with none of the windows'
+      // own focused, the keyboard goes to the shown workspace's first. Its
+      // frame mounts on the next render.
+      const first = all[at]?.columns[0]?.windows[0];
+      if (active === undefined && first !== undefined) {
+        void tick().then(() => {
+          if (active === undefined) {
+            focus(first);
+          }
+        });
+      }
       // An app notifies, so it runs whether or not it is looked at.
       for (const { key, isApp } of asleep) {
         if (isApp) {
