@@ -21,6 +21,7 @@
     "@domicile-svelte/bar-volume": "workspace:*",
     "@domicile-svelte/bar-window-title": "workspace:*",
     "@domicile-svelte/bar-workspaces": "workspace:*",
+    "@domicile-svelte/keybinds": "workspace:*",
     "@domicile-svelte/launcher": "workspace:*",
     "@domicile-svelte/lock": "workspace:*",
     "@domicile-svelte/pip": "workspace:*",

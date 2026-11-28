@@ -178,6 +178,16 @@
         "svelte": "^5.59.1",
       },
     },
+    "packages/keybinds": {
+      "name": "@domicile-svelte/keybinds",
+      "dependencies": {
+        "@domicile-svelte/svelte": "workspace:*",
+      },
+      "peerDependencies": {
+        "@domicile-desktop/sdk": "^2.2.0",
+        "svelte": "^5.59.1",
+      },
+    },
     "packages/launcher": {
       "name": "@domicile-svelte/launcher",
       "dependencies": {
@@ -268,6 +278,7 @@
         "@domicile-svelte/bar-volume": "workspace:*",
         "@domicile-svelte/bar-window-title": "workspace:*",
         "@domicile-svelte/bar-workspaces": "workspace:*",
+        "@domicile-svelte/keybinds": "workspace:*",
         "@domicile-svelte/launcher": "workspace:*",
         "@domicile-svelte/lock": "workspace:*",
         "@domicile-svelte/pip": "workspace:*",
@@ -320,6 +331,8 @@
     "@domicile-svelte/bar-workspaces": ["@domicile-svelte/bar-workspaces@workspace:packages/bar-workspaces"],
 
     "@domicile-svelte/extensions": ["@domicile-svelte/extensions@workspace:packages/extensions"],
+
+    "@domicile-svelte/keybinds": ["@domicile-svelte/keybinds@workspace:packages/keybinds"],
 
     "@domicile-svelte/launcher": ["@domicile-svelte/launcher@workspace:packages/launcher"],
 

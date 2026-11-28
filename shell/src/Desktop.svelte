@@ -16,6 +16,7 @@
   import Volume from "@domicile-svelte/bar-volume";
   import WindowTitle from "@domicile-svelte/bar-window-title";
   import Workspaces from "@domicile-svelte/bar-workspaces";
+  import { type Binding, Explorer } from "@domicile-svelte/keybinds";
   import { installedSource, Launcher, matching, type Source } from "@domicile-svelte/launcher";
   import { Lock } from "@domicile-svelte/lock";
   import PictureInPicture from "@domicile-svelte/pip";
@@ -121,72 +122,171 @@
       .catch((error: unknown) => console.error("[shell]", what, error));
   };
 
-  const bindings: Record<string, () => void> = {
-    "Meta+Return": launch(["kitty"]),
-    // croshome installs `domicile-quit`: SIGTERM to the launcher.
-    "Meta+Shift+E": launch(["domicile-quit"]),
-    "Meta+b": () => domicile.browser.open("about:blank"),
-    "Meta+q": () => layout?.close(),
-    "Meta+d": () => {
-      apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
-      openLauncher([apps, web], "Run an app, or open an address");
+  // Each chord, what it does in words and what it runs. The explorer
+  // (Meta+Shift+?) lists them by group.
+  const keys: Binding[] = [
+    { chord: "Meta+Return", group: "Apps", label: "Terminal", run: launch(["kitty"]) },
+    { chord: "Meta+b", group: "Apps", label: "New browser window", run: () => domicile.browser.open("about:blank") },
+    {
+      chord: "Meta+d",
+      group: "Apps",
+      label: "Run an app, or open an address",
+      run: () => {
+        apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
+        openLauncher([apps, web], "Run an app, or open an address");
+      },
     },
-    "Meta+Tab": () => {
-      // Window rows take their app's icon from the entries.
-      apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
-      openLauncher([windowList], "Windows");
+    {
+      chord: "Meta+Tab",
+      group: "Windows",
+      label: "Find a window",
+      run: () => {
+        // Window rows take their app's icon from the entries.
+        apps.reload().catch((error: unknown) => console.error("[launcher] apps:", error));
+        openLauncher([windowList], "Windows");
+      },
     },
-    "Meta+v": () => openLauncher([copies], "History"),
-    "Meta+space": () => keymap?.next(),
-    "Meta+p": () => layout?.park(),
-    "Meta+o": () => layout?.toggleOverview(),
-    // swaylock's key under niri.
-    "Ctrl+Alt+Delete": () => domicile.session.lock(),
+    { chord: "Meta+v", group: "Apps", label: "Clipboard history", run: () => openLauncher([copies], "History") },
+    { chord: "Meta+q", group: "Windows", label: "Close the window", run: () => layout?.close() },
+    { chord: "Meta+p", group: "Windows", label: "Park the window", run: () => layout?.park() },
+    { chord: "Meta+r", group: "Windows", label: "Cycle the column's width", run: () => layout?.cycleWidth() },
+    { chord: "Meta+f", group: "Windows", label: "Maximize", run: () => layout?.maximize() },
+    { chord: "Meta+Shift+F", group: "Windows", label: "Fullscreen", run: () => layout?.toggleFullscreen() },
+    { chord: "Meta+c", group: "Windows", label: "Center the column", run: () => layout?.center() },
+    {
+      chord: "Meta+comma",
+      group: "Windows",
+      label: "Take the next window into the column",
+      run: () => layout?.consume(),
+    },
+    {
+      chord: "Meta+period",
+      group: "Windows",
+      label: "Put the window in a column of its own",
+      run: () => layout?.expel(),
+    },
+    {
+      chord: "Meta+bracketleft",
+      group: "Windows",
+      label: "Into or out of the column on the left",
+      run: () => layout?.consumeOrExpel("left"),
+    },
+    {
+      chord: "Meta+bracketright",
+      group: "Windows",
+      label: "Into or out of the column on the right",
+      run: () => layout?.consumeOrExpel("right"),
+    },
     // The layout keys as croshome's niri config binds them.
-    "Meta+h": () => layout?.move("left"),
-    "Meta+j": () => layout?.move("down"),
-    "Meta+k": () => layout?.move("up"),
-    "Meta+l": () => layout?.move("right"),
-    "Meta+Left": () => layout?.move("left"),
-    "Meta+Down": () => layout?.move("down"),
-    "Meta+Up": () => layout?.move("up"),
-    "Meta+Right": () => layout?.move("right"),
-    "Meta+Home": () => layout?.moveToEdge("first"),
-    "Meta+End": () => layout?.moveToEdge("last"),
-    "Meta+Ctrl+h": () => layout?.moveColumn("left"),
-    "Meta+Ctrl+l": () => layout?.moveColumn("right"),
-    "Meta+Ctrl+j": () => layout?.moveWindowOrToWorkspace("down"),
-    "Meta+Ctrl+k": () => layout?.moveWindowOrToWorkspace("up"),
-    "Meta+Ctrl+Left": () => layout?.moveColumn("left"),
-    "Meta+Ctrl+Right": () => layout?.moveColumn("right"),
-    "Meta+Ctrl+Down": () => layout?.moveWindow("down"),
-    "Meta+Ctrl+Up": () => layout?.moveWindow("up"),
-    "Meta+Ctrl+Home": () => layout?.moveColumn("first"),
-    "Meta+Ctrl+End": () => layout?.moveColumn("last"),
-    "Meta+Shift+H": () => layout?.moveColumn("left"),
-    "Meta+Shift+L": () => layout?.moveColumn("right"),
-    "Meta+Shift+J": () => layout?.moveWindow("down"),
-    "Meta+Shift+K": () => layout?.moveWindow("up"),
-    "Meta+u": () => layout?.focusWorkspace("down"),
-    "Meta+i": () => layout?.focusWorkspace("up"),
-    "Alt+Tab": () => layout?.focusWorkspace("previous"),
-    ...Object.fromEntries(
-      [1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((number) => [
-        [`Meta+${number}`, () => layout?.focusWorkspace(number)],
-        [`Meta+Ctrl+${number}`, () => layout?.moveToWorkspace(number)],
-      ]),
-    ),
-    "Meta+comma": () => layout?.consume(),
-    "Meta+period": () => layout?.expel(),
-    "Meta+bracketleft": () => layout?.consumeOrExpel("left"),
-    "Meta+bracketright": () => layout?.consumeOrExpel("right"),
-    "Meta+r": () => layout?.cycleWidth(),
-    "Meta+f": () => layout?.maximize(),
-    "Meta+Shift+F": () => layout?.toggleFullscreen(),
-    "Meta+c": () => layout?.center(),
-    "Meta+Shift+P": () => logged("turning the monitors off", domicile.displays.sleep()),
-    Print: () => logged("screenshot", domicile.capture.screenshot()),
-    "Shift+Print": () => logged("recording", domicile.capture.screenRecord()),
+    ...(
+      [
+        ["h", "Left", "left"],
+        ["j", "Down", "down"],
+        ["k", "Up", "up"],
+        ["l", "Right", "right"],
+      ] as const
+    ).flatMap(([letter, arrow, way]): Binding[] => [
+      { chord: `Meta+${letter}`, group: "Focus", label: `Focus ${way}`, run: () => layout?.move(way) },
+      { chord: `Meta+${arrow}`, group: "Focus", label: `Focus ${way}`, run: () => layout?.move(way) },
+    ]),
+    { chord: "Meta+Home", group: "Focus", label: "Focus the first column", run: () => layout?.moveToEdge("first") },
+    { chord: "Meta+End", group: "Focus", label: "Focus the last column", run: () => layout?.moveToEdge("last") },
+    { chord: "Meta+o", group: "Focus", label: "Overview", run: () => layout?.toggleOverview() },
+    { chord: "Meta+Ctrl+h", group: "Move", label: "Move the column left", run: () => layout?.moveColumn("left") },
+    { chord: "Meta+Ctrl+l", group: "Move", label: "Move the column right", run: () => layout?.moveColumn("right") },
+    {
+      chord: "Meta+Ctrl+j",
+      group: "Move",
+      label: "Move the window down, or to the workspace below",
+      run: () => layout?.moveWindowOrToWorkspace("down"),
+    },
+    {
+      chord: "Meta+Ctrl+k",
+      group: "Move",
+      label: "Move the window up, or to the workspace above",
+      run: () => layout?.moveWindowOrToWorkspace("up"),
+    },
+    { chord: "Meta+Ctrl+Left", group: "Move", label: "Move the column left", run: () => layout?.moveColumn("left") },
+    { chord: "Meta+Ctrl+Right", group: "Move", label: "Move the column right", run: () => layout?.moveColumn("right") },
+    { chord: "Meta+Ctrl+Down", group: "Move", label: "Move the window down", run: () => layout?.moveWindow("down") },
+    { chord: "Meta+Ctrl+Up", group: "Move", label: "Move the window up", run: () => layout?.moveWindow("up") },
+    { chord: "Meta+Ctrl+Home", group: "Move", label: "Move the column first", run: () => layout?.moveColumn("first") },
+    { chord: "Meta+Ctrl+End", group: "Move", label: "Move the column last", run: () => layout?.moveColumn("last") },
+    { chord: "Meta+Shift+H", group: "Move", label: "Move the column left", run: () => layout?.moveColumn("left") },
+    { chord: "Meta+Shift+L", group: "Move", label: "Move the column right", run: () => layout?.moveColumn("right") },
+    { chord: "Meta+Shift+J", group: "Move", label: "Move the window down", run: () => layout?.moveWindow("down") },
+    { chord: "Meta+Shift+K", group: "Move", label: "Move the window up", run: () => layout?.moveWindow("up") },
+    { chord: "Meta+u", group: "Workspaces", label: "Workspace below", run: () => layout?.focusWorkspace("down") },
+    { chord: "Meta+i", group: "Workspaces", label: "Workspace above", run: () => layout?.focusWorkspace("up") },
+    {
+      chord: "Alt+Tab",
+      group: "Workspaces",
+      label: "The workspace before",
+      run: () => layout?.focusWorkspace("previous"),
+    },
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].flatMap((number): Binding[] => [
+      {
+        chord: `Meta+${number}`,
+        group: "Workspaces",
+        label: `Workspace ${number}`,
+        run: () => layout?.focusWorkspace(number),
+      },
+      {
+        chord: `Meta+Ctrl+${number}`,
+        group: "Workspaces",
+        label: `Move the window to workspace ${number}`,
+        run: () => layout?.moveToWorkspace(number),
+      },
+    ]),
+    { chord: "Meta+space", group: "Desktop", label: "Next keyboard layout", run: () => keymap?.next() },
+    { chord: "Meta+Shift+question", group: "Desktop", label: "These keybindings", run: () => toggleExplorer() },
+    // swaylock's key under niri.
+    { chord: "Ctrl+Alt+Delete", group: "Desktop", label: "Lock", run: () => domicile.session.lock() },
+    {
+      chord: "Meta+Shift+P",
+      group: "Desktop",
+      label: "Turn the monitors off",
+      run: () => logged("turning the monitors off", domicile.displays.sleep()),
+    },
+    {
+      chord: "Print",
+      group: "Desktop",
+      label: "Screenshot",
+      run: () => logged("screenshot", domicile.capture.screenshot()),
+    },
+    {
+      chord: "Shift+Print",
+      group: "Desktop",
+      label: "Record the screen",
+      run: () => logged("recording", domicile.capture.screenRecord()),
+    },
+    // croshome installs `domicile-quit`: SIGTERM to the launcher.
+    { chord: "Meta+Shift+E", group: "Desktop", label: "Quit the desktop", run: launch(["domicile-quit"]) },
+  ];
+  const bindings: Readonly<Record<string, () => void>> = Object.fromEntries(keys.map(({ chord, run }) => [chord, run]));
+
+  // The keybinding explorer. While it is open, a grabbed chord is shown in it
+  // rather than run, except its own, which closes it.
+  let explorer = $state<ReturnType<typeof Explorer>>();
+  let isExplorerOpen = $state(false);
+  const toggleExplorer = () => {
+    isExplorerOpen = !isExplorerOpen;
+    if (!isExplorerOpen) {
+      layout?.refocus();
+    }
+  };
+  const closeExplorer = () => {
+    if (isExplorerOpen) {
+      isExplorerOpen = false;
+      layout?.refocus();
+    }
+  };
+  const pressed = (chord: string) => {
+    if (isExplorerOpen && chord !== "Meta+Shift+question") {
+      explorer?.heard(chord);
+    } else {
+      bindings[chord]?.();
+    }
   };
 
   $effect(() => {
@@ -198,7 +298,7 @@
         console.error("[shell] grabbing", chord, error);
       }
     }
-    const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => bindings[chord]?.());
+    const unlisten = domicile.keyboard.on("shortcut", ({ chord }) => pressed(chord));
     return () => {
       unlisten();
       for (const chord of Object.keys(bindings)) {
@@ -456,6 +556,9 @@
     {#key launcher}
       <Launcher sources={launcher.sources} placeholder={launcher.placeholder} onclose={closeLauncher} />
     {/key}
+  {/if}
+  {#if isExplorerOpen}
+    <Explorer bind:this={explorer} bindings={keys} onclose={closeExplorer} />
   {/if}
 </div>
 <Portals onclose={() => layout?.refocus()} icon={apps.appIcon} chords={Object.keys(bindings)} />
