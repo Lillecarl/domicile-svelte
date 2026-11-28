@@ -32,14 +32,27 @@ export const partsOf = (chord: string): Parts => {
 const same = (a: ReadonlySet<Modifier>, b: ReadonlySet<Modifier>) =>
   a.size === b.size && [...a].every((each) => b.has(each));
 
-/** The bindings `held` fires, by key: modifiers match exactly, as the engine's do. */
-export const boundWith = (bindings: readonly Binding[], held: ReadonlySet<Modifier>): ReadonlyMap<string, Binding> =>
-  new Map(
-    bindings.flatMap((binding) => {
-      const { key, modifiers } = partsOf(binding.chord);
-      return same(modifiers, held) ? [[key, binding] as const] : [];
-    }),
-  );
+/** Whether `binding` fires with exactly `held`, as the engine matches modifiers. */
+export const firesWith = (binding: Binding, held: ReadonlySet<Modifier>): boolean =>
+  same(partsOf(binding.chord).modifiers, held);
+
+/**
+ * The bindings on each key: with modifiers `held`, those that fire with
+ * exactly them; with none held, every binding on the key.
+ */
+export const onKeys = (
+  bindings: readonly Binding[],
+  held: ReadonlySet<Modifier>,
+): ReadonlyMap<string, readonly Binding[]> => {
+  const keys = new Map<string, Binding[]>();
+  for (const binding of bindings) {
+    if (held.size === 0 || firesWith(binding, held)) {
+      const { key } = partsOf(binding.chord);
+      keys.set(key, [...(keys.get(key) ?? []), binding]);
+    }
+  }
+  return keys;
+};
 
 /**
  * The bindings whose label, group or chord holds every word of `query`, in

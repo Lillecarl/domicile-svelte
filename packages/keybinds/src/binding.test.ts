@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Binding, boundWith, type Group, matching, partsOf, shownChord } from "./binding";
+import { type Binding, type Group, matching, onKeys, partsOf, shownChord } from "./binding";
 
 const binding = (chord: string, label: string, group: Group = "Windows"): Binding => ({
   chord,
@@ -27,21 +27,27 @@ describe("partsOf", () => {
   });
 });
 
-describe("boundWith", () => {
+describe("onKeys", () => {
+  const labels = (keys: ReadonlyMap<string, readonly Binding[]>) =>
+    [...keys].map(([key, on]) => [key, on.map(({ label }) => label)]);
+
   test("finds the bindings the held modifiers fire, exactly", () => {
-    expect([...boundWith(bindings, new Set(["Meta"])).entries()].map(([key, { label }]) => [key, label])).toEqual([
-      ["q", "Close the window"],
-      ["h", "Focus left"],
-      ["Return", "Terminal"],
+    expect(labels(onKeys(bindings, new Set(["Meta"])))).toEqual([
+      ["q", ["Close the window"]],
+      ["h", ["Focus left"]],
+      ["Return", ["Terminal"]],
     ]);
   });
 
   test("tells Meta+Shift apart from Meta", () => {
-    expect([...boundWith(bindings, new Set(["Shift", "Meta"])).keys()]).toEqual(["h"]);
+    expect([...onKeys(bindings, new Set(["Shift", "Meta"])).keys()]).toEqual(["h"]);
   });
 
-  test("finds a key bound with no modifier", () => {
-    expect([...boundWith(bindings, new Set()).keys()]).toEqual(["Print"]);
+  test("lists every binding on a key while nothing is held", () => {
+    expect(labels(onKeys(bindings, new Set())).find(([key]) => key === "h")).toEqual([
+      "h",
+      ["Move the column left", "Focus left"],
+    ]);
   });
 });
 

@@ -1,7 +1,8 @@
 <!--
-  The keybindings, to learn them: a keyboard whose keys light up with what
-  they do under the modifiers held, and a list to search. Holding Meta,
-  Shift, Ctrl or Alt shows that set; clicking a modifier key pins it. A chord
+  The keybindings, to learn them: a keyboard drawn in the layout the desktop
+  types on, whose keys light up with what they do, and a list to search. With
+  no modifier held every bound key lights up; holding Meta, Shift, Ctrl or
+  Alt, or clicking one to pin it, shows the chords with exactly those. A chord
   the shell grabs, pressed while this is open, is shown rather than run
   (`heard`). Escape, or focus leaving, closes.
 -->
@@ -11,16 +12,16 @@
 
   import {
     type Binding,
-    boundWith,
+    firesWith,
     type Group,
     matching,
     MODIFIERS,
     type Modifier,
+    onKeys,
     partsOf,
     shownChord,
-    shownKey,
   } from "./binding";
-  import { capOf, KEYBOARD, MODIFIER_KEYS } from "./keyboard";
+  import { capOf, keyboardFor, keysymOf, MODIFIER_KEYS, readLayout, US_LAYOUT } from "./keyboard";
 
   const {
     bindings,
@@ -33,23 +34,34 @@
   const { windows } = useDomicile();
 
   const held = new SvelteSet<Modifier>();
-  // Meta to start with: nearly every binding holds it.
-  const pinned = new SvelteSet<Modifier>(["Meta"]);
+  const pinned = new SvelteSet<Modifier>();
   let query = $state("");
-  let picked = $state<Binding>();
+  let picked = $state<readonly Binding[]>([]);
   // bind:this sets null, not undefined, when the field goes.
   let input = $state<HTMLInputElement | null>();
+  // What each key types on the desktop's layout. The engine answers from the
+  // keymap the compositor sent; US until it does, or where it cannot.
+  let layout = $state<ReadonlyMap<string, string>>(US_LAYOUT);
 
   const modifiers = $derived<ReadonlySet<Modifier>>(held.size > 0 ? held : pinned);
-  const bound = $derived(boundWith(bindings, modifiers));
+  const bound = $derived(onKeys(bindings, modifiers));
+  const keyboard = $derived(keyboardFor(layout.has("IntlBackslash")));
   const listed = $derived(
-    matching(bindings, query).filter((binding) => modifiers.size === 0 || boundWith([binding], modifiers).size > 0),
+    matching(bindings, query).filter((binding) => modifiers.size === 0 || firesWith(binding, modifiers)),
   );
 
   /** A chord the shell grabs was pressed: show what it does. */
   export const heard = (chord: string) => {
-    picked = bindings.find((binding) => binding.chord === chord);
+    picked = bindings.filter((binding) => binding.chord === chord);
   };
+
+  $effect(() => {
+    readLayout()
+      .then((read) => {
+        layout = read ?? US_LAYOUT;
+      })
+      .catch((error: unknown) => console.error("[keybinds] reading the layout", error));
+  });
 
   // A page has the keyboard until the shell takes it.
   $effect(() => {
@@ -109,7 +121,7 @@
     Workspaces: "#cba6f7",
   };
 
-  const isPicked = (binding: Binding | undefined) => binding !== undefined && binding === picked;
+  const isPicked = (on: readonly Binding[]) => on.some((binding) => picked.includes(binding));
 </script>
 
 <div
@@ -137,32 +149,35 @@
   </header>
 
   <p class="picked" aria-live="polite">
-    {#if picked}
-      <kbd>{shownChord(picked.chord)}</kbd>
-      <span style:color={COLORS[picked.group]}>{picked.label}</span>
+    {#each picked as binding (binding.chord)}
+      <span class="chord">
+        <kbd>{shownChord(binding.chord)}</kbd>
+        <span style:color={COLORS[binding.group]}>{binding.label}</span>
+      </span>
     {:else}
-      Hold Meta, Shift, Ctrl or Alt, or press a chord, to see what it does.
-    {/if}
+      Point at a key, hold Meta, Shift, Ctrl or Alt, or press a chord, to see what it does.
+    {/each}
   </p>
 
   <div class="keyboard">
-    {#each KEYBOARD as keys, index (index)}
+    {#each keyboard as keys, index (index)}
       <div class="row">
-        {#each keys as { key, width = 1 } (key)}
-          {@const binding = bound.get(key)}
-          {@const modifier = MODIFIER_KEYS[key]}
+        {#each keys as key, at (`${key.code}${at}`)}
+          {@const on = bound.get(keysymOf(key, layout) ?? "") ?? []}
+          {@const modifier = MODIFIER_KEYS[key.code]}
+          {@const first = on[0]}
           <button
             class="key"
-            class:bound={binding !== undefined}
+            class:bound={first !== undefined}
             class:held={modifier !== undefined && modifiers.has(modifier)}
-            class:picked={isPicked(binding)}
-            style:--width={width}
-            style:--color={binding === undefined ? undefined : COLORS[binding.group]}
-            title={binding?.label}
+            class:picked={isPicked(on)}
+            style:--width={key.width ?? 1}
+            style:--color={first === undefined ? undefined : COLORS[first.group]}
+            title={on.map(({ chord, label }) => `${shownChord(chord)}: ${label}`).join("\n")}
             tabindex="-1"
             onpointerenter={() => {
-              if (binding !== undefined) {
-                picked = binding;
+              if (on.length > 0) {
+                picked = on;
               }
             }}
             onclick={() => {
@@ -171,8 +186,8 @@
               }
             }}
           >
-            <span class="cap">{capOf(key, shownKey)}</span>
-            {#if binding}<span class="what">{binding.label}</span>{/if}
+            <span class="cap">{capOf(key, layout)}</span>
+            {#if first}<span class="what">{on.length === 1 ? first.label : `${on.length} chords`}</span>{/if}
           </button>
         {/each}
       </div>
@@ -183,16 +198,16 @@
     {#each listed as binding (binding.chord)}
       <li>
         <button
-          class:picked={isPicked(binding)}
+          class:picked={picked.includes(binding)}
           tabindex="-1"
-          onpointerenter={() => (picked = binding)}
+          onpointerenter={() => (picked = [binding])}
           onclick={() => {
             const parts = partsOf(binding.chord);
             pinned.clear();
             for (const modifier of parts.modifiers) {
               pinned.add(modifier);
             }
-            picked = binding;
+            picked = [binding];
           }}
         >
           <kbd>{shownChord(binding.chord)}</kbd>
@@ -269,11 +284,18 @@
 
   .picked {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 6px 16px;
     align-items: center;
     min-height: 24px;
     margin: 0;
     color: #7f849c;
+  }
+
+  .chord {
+    display: flex;
+    gap: 8px;
+    align-items: center;
   }
 
   kbd {
