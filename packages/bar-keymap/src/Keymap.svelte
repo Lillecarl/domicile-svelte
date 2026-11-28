@@ -7,6 +7,7 @@
   import { KeymapChoice } from "@domicile-desktop/sdk/keymap-choice";
   import { BarItem } from "@domicile-svelte/bar";
   import { fromListening, listen, useDomicile } from "@domicile-svelte/svelte";
+  import { untrack } from "svelte";
   import { MediaQuery } from "svelte/reactivity";
   import { innerHeight, innerWidth } from "svelte/reactivity/window";
   import { fade } from "svelte/transition";
@@ -91,8 +92,10 @@
     }
     const first = before === undefined;
     before = name;
+    // Untracked: `show` reads and writes the label, and tracked, hiding it
+    // would show it again.
     if (!first) {
-      show(name);
+      untrack(() => show(name));
     }
   });
   $effect(() => stopShowing);
