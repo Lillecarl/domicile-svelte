@@ -1,6 +1,7 @@
-// Vim keys for pages: j/k/d/u/gg/G scroll, f follows a link by its hint, F
-// opens it in a new window, i focuses the field the page wanted focused, H and
-// L go back and forward, Escape leaves an input or the hints.
+// Vim keys for pages: j/k/d/u/gg/G scroll, smoothly and faster while held,
+// and J/K/D/U three times as far. f follows a link by its hint, F opens it in
+// a new window, i focuses the field the page wanted focused, H and L go back
+// and forward, Escape leaves an input or the hints.
 //
 // The clickable rules follow Vimium's content_scripts/link_hints.js (MIT),
 // the hint strings Vimium C's content/hint_filters.ts (Apache-2.0, Gong
@@ -175,15 +176,97 @@
 
   const viewHeight = (element) => (element === document.scrollingElement ? window.innerHeight : element.clientHeight);
 
-  const scrollBy = (direction, amount) => {
+  // A press glides; a key still down when its glide ends scrolls on, faster
+  // the longer it is held, until it comes up. Positions are set, not added:
+  // scrollBy rounds each frame's few pixels away on a page without fractional
+  // offsets. "instant" overrides a page's `scroll-behavior: smooth`, which
+  // would animate every frame's move again.
+  const GLIDE_MS = 160;
+  const LONG_GLIDE_MS = 260;
+  const HOLD_SPEED = 900;
+  const TOP_SPEED = 4000;
+  const ACCELERATE_MS = 1500;
+  // Shift: J, K, D and U go this many times as far.
+  const FAST = 3;
+
+  const down = new Set();
+  let motion;
+
+  const stopMotion = () => {
+    if (motion !== undefined) {
+      cancelAnimationFrame(motion.frame);
+      motion = undefined;
+    }
+  };
+
+  const maxTop = (target) => target.scrollHeight - viewHeight(target);
+
+  const hold = (target, direction, code, speedUp) => {
+    stopMotion();
+    const start = performance.now();
+    let last = start;
+    let top = target.scrollTop;
+    const frame = (now) => {
+      if (!down.has(code)) {
+        motion = undefined;
+        return;
+      }
+      const ramp = Math.min(1, (now - start) / ACCELERATE_MS);
+      const speed = (HOLD_SPEED + (TOP_SPEED - HOLD_SPEED) * ramp) * speedUp;
+      // A frame's time may be from before `start`.
+      const elapsed = Math.max(0, now - last);
+      top = Math.max(0, Math.min(maxTop(target), top + (direction * speed * elapsed) / 1000));
+      last = Math.max(last, now);
+      target.scrollTo({ top, behavior: "instant" });
+      motion.frame = requestAnimationFrame(frame);
+    };
+    motion = { target, code, frame: requestAnimationFrame(frame) };
+  };
+
+  // To `to` over `ms`, easing out. A press during a glide starts from where
+  // that one was going, so quick presses add up instead of stalling.
+  const glide = (target, to, ms, code, speedUp) => {
+    const from = target.scrollTop;
+    const end = Math.max(0, Math.min(maxTop(target), to));
+    stopMotion();
+    const start = performance.now();
+    const frame = (now) => {
+      const progress = Math.min(1, (now - start) / ms);
+      target.scrollTo({ top: from + (end - from) * (1 - (1 - progress) ** 3), behavior: "instant" });
+      if (progress < 1) {
+        motion.frame = requestAnimationFrame(frame);
+      } else if (code !== undefined && down.has(code)) {
+        hold(target, Math.sign(end - from), code, speedUp);
+      } else {
+        motion = undefined;
+      }
+    };
+    motion = { target, code, end, frame: requestAnimationFrame(frame) };
+  };
+
+  const scrollBy = (direction, amount, code, speedUp = 1) => {
     const target = scroller(direction);
-    target?.scrollBy({ top: direction * amount(target) });
+    if (target !== undefined) {
+      const from = motion?.target === target && motion.end !== undefined ? motion.end : target.scrollTop;
+      glide(target, from + direction * amount(target) * speedUp, GLIDE_MS, code, speedUp);
+    }
   };
 
   const scrollToEnd = (direction) => {
     const target = scroller(direction);
-    target?.scrollTo({ top: direction > 0 ? target.scrollHeight : 0 });
+    if (target !== undefined) {
+      glide(target, direction > 0 ? maxTop(target) : 0, LONG_GLIDE_MS);
+    }
   };
+
+  on("keyup", (event) => down.delete(event.code), true);
+  on("blur", () => {
+    down.clear();
+    stopMotion();
+  });
+  // A wheel or a drag takes over from a glide.
+  on("wheel", stopMotion, true);
+  on("pointerdown", stopMotion, true);
 
   // --- Hints -------------------------------------------------------------------
 
@@ -432,11 +515,16 @@
 
   // --- Keys --------------------------------------------------------------------
 
+  const half = (target) => viewHeight(target) / 2;
   const commands = {
-    j: () => scrollBy(1, () => STEP),
-    k: () => scrollBy(-1, () => STEP),
-    d: () => scrollBy(1, (target) => viewHeight(target) / 2),
-    u: () => scrollBy(-1, (target) => viewHeight(target) / 2),
+    j: ({ code }) => scrollBy(1, () => STEP, code),
+    k: ({ code }) => scrollBy(-1, () => STEP, code),
+    J: ({ code }) => scrollBy(1, () => STEP, code, FAST),
+    K: ({ code }) => scrollBy(-1, () => STEP, code, FAST),
+    d: ({ code }) => scrollBy(1, half, code),
+    u: ({ code }) => scrollBy(-1, half, code),
+    D: ({ code }) => scrollBy(1, half, code, FAST),
+    U: ({ code }) => scrollBy(-1, half, code, FAST),
     G: () => scrollToEnd(1),
     f: () => enterHints(false),
     F: () => enterHints(true),
@@ -488,7 +576,11 @@
       const command = commands[event.key];
       if (command !== undefined) {
         consume(event);
-        command();
+        // The key's own repeats: its glide carries on into a held scroll.
+        if (!(event.repeat && motion?.code === event.code)) {
+          down.add(event.code);
+          command(event);
+        }
       } else {
         interacted ||= event.isTrusted;
       }
