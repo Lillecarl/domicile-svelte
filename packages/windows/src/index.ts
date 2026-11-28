@@ -22,4 +22,5 @@ export {
   toggleFull,
 } from "./columns";
 export { focusNewWindows } from "./focus";
+export { PageBar, providePageBar } from "./page-bar.svelte";
 export { type Listed, default as Scrolling } from "./Scrolling.svelte";

@@ -22,7 +22,7 @@
   import PictureInPicture from "@domicile-svelte/pip";
   import { Capturing, picture, Portals } from "@domicile-svelte/portals";
   import { useDomicile, watch } from "@domicile-svelte/svelte";
-  import { addressOf, focusNewWindows, Scrolling } from "@domicile-svelte/windows";
+  import { addressOf, focusNewWindows, providePageBar, Scrolling } from "@domicile-svelte/windows";
 
   // Inlined, so the bundle needs no asset served beside it. Traced with
   // potrace, a layer per color, from swaylock's picture in croshome
@@ -32,6 +32,7 @@
 
   const domicile = useDomicile();
   $effect(() => focusNewWindows(domicile.windows));
+  const pageBar = providePageBar();
   let layout = $state<ReturnType<typeof Scrolling>>();
   const launch = (argv: string[]) => () => domicile.processes.launch(argv);
 
@@ -535,7 +536,9 @@
       <Workspaces workspaces={layout?.listWorkspaces() ?? []} onpick={(number) => layout?.focusWorkspace(number)} />
       <Keymap bind:this={keymap} onclicked={() => layout?.refocus()} />
     {/snippet}
-    {#snippet center()}<WindowTitle />{/snippet}
+    {#snippet center()}
+      {#if pageBar.controls === undefined}<WindowTitle />{:else}{@render pageBar.controls()}{/if}
+    {/snippet}
     {#snippet right()}
       <Capturing />
       <Monitor bind:this={monitor} onclose={() => layout?.refocus()} />

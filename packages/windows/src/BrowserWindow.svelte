@@ -37,6 +37,7 @@
     WEBVIEW_RENDER_PROCESS_CHANGE_EVENT,
     WEBVIEW_SIGN_IN_EVENT,
     WEBVIEW_SIGN_IN_WITHDRAWN_EVENT,
+    WEBVIEW_SITE_PRIVACY_CHANGE_EVENT,
     WEBVIEW_ZOOM_CHANGE_EVENT,
     WEBVIEW_ZOOM_IN_REQUEST_EVENT,
     WEBVIEW_ZOOM_OUT_REQUEST_EVENT,
@@ -58,6 +59,7 @@
   import PageHints from "./PageHints.svelte";
   import PagePicker from "./PagePicker.svelte";
   import PageProblem from "./PageProblem.svelte";
+  import { usePageBar } from "./page-bar.svelte";
   import { pageMenu } from "./page-menu";
   import PageView from "./PageView.svelte";
   import Permission, { type Request } from "./Permission.svelte";
@@ -65,6 +67,7 @@
   import { type Problem, problemOf } from "./problem";
   import { promptAsk } from "./prompt";
   import { identityAsk, signInAsk } from "./sign-in";
+  import { type Shield, shieldMenu, shieldOf, siteOf } from "./site";
   import { zoomedIn, zoomedOut } from "./zoom";
 
   const {
@@ -109,7 +112,13 @@
   let frame = $state<HTMLElement>();
   let address = $state<HTMLInputElement>();
   let page = $state<Page>();
+  let url = $state("");
   let typed = $state("");
+  // The address shows as its site until it is clicked, or Ctrl+L.
+  let editingAddress = $state(false);
+  let shield = $state.raw<Shield>();
+  const site = $derived(siteOf(url));
+  const pageBar = usePageBar();
   let request = $state.raw<Request>();
   // What the page asks, oldest first; the engine sends one of a kind at a time.
   let asking = $state.raw<readonly { kind: string; event: Asker; ask: Ask }[]>([]);
@@ -281,8 +290,14 @@
         view.focus();
       }
       shown = view.url;
+      url = view.url;
     };
     view.addEventListener(WEBVIEW_PAGE_CHANGE_EVENT, changed);
+    const readShield = () => {
+      shield = shieldOf(view);
+    };
+    readShield();
+    view.addEventListener(WEBVIEW_SITE_PRIVACY_CHANGE_EVENT, readShield);
     const readProblem = () => {
       const had = hasKeyboard();
       const was = problem;
@@ -483,6 +498,7 @@
       picking = undefined;
       finding = false;
       problem = undefined;
+      shield = undefined;
     };
   };
 
@@ -517,8 +533,7 @@
     } else if (problem !== undefined) {
       problemBox?.focus();
     } else if (chrome && blank(page?.url ?? "")) {
-      address?.focus();
-      address?.select();
+      editAddress();
     } else {
       pageFocused()?.focus();
     }
@@ -527,9 +542,37 @@
 
   const editAddress = () => {
     if (chrome) {
-      address?.focus();
-      address?.select();
+      editingAddress = true;
+      // Drawn on the next tick, when it showed the site.
+      void tick().then(() => {
+        address?.focus();
+        address?.select();
+      });
     }
+  };
+
+  // The focused window's controls are in the shell's bar, while it has one.
+  $effect(() => {
+    if (pageBar !== undefined && active && chrome && drawn) {
+      return pageBar.show(controls);
+    }
+  });
+
+  const showShield = (event: MouseEvent & { currentTarget: HTMLElement }) => {
+    const view = page;
+    if (view === undefined || shield === undefined) {
+      return;
+    }
+    const box = event.currentTarget.getBoundingClientRect();
+    onmenu(
+      shieldMenu(shield, (mode) => {
+        view.setBlockAdsAndTrackers(mode, "site");
+        // It applies from the next request.
+        view.reload();
+      }),
+      box.left,
+      box.bottom,
+    );
   };
 
   const zoomIn = () => page?.setZoom(zoomedIn(page.zoom));
@@ -598,49 +641,82 @@
   };
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="browser" onfocusin={onfocus} onkeydown={keydown}>
-  {#if chrome}
-    <form
-      onsubmit={(event) => {
-        event.preventDefault();
-        go(typed);
-      }}
+{#snippet controls()}
+  <!-- In the bar, the page's keys come here: the window's frame is not around it. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <form
+    class:in-bar={pageBar !== undefined}
+    onkeydown={pageBar === undefined ? undefined : keydown}
+    onsubmit={(event) => {
+      event.preventDefault();
+      go(typed);
+    }}
+  >
+    {#if page !== undefined}<PageButtons view={page} {loading} {onmenu} />{/if}
+    <!-- A page may take the right click that opens this menu too. -->
+    <button
+      type="button"
+      title={site?.secure === false ? "Not secure · site permissions" : "Site permissions"}
+      aria-label="Site permissions"
+      class:insecure={site?.secure === false}
+      onmousedown={(event) => event.preventDefault()}
+      onclick={showPermissions}
     >
-      {#if page !== undefined}<PageButtons view={page} {loading} {onmenu} />{/if}
-      <!-- A page may take the right click that opens this menu too. -->
+      {site?.secure === false ? "\u{f033f}" : "\u{f033e}"}
+    </button>
+    {#if shield !== undefined}
       <button
         type="button"
-        title="Site permissions"
-        aria-label="Site permissions"
+        title="Ads and trackers"
+        aria-label="Ads and trackers: {shield.blocked} blocked"
+        class:off={shield.mode === "off"}
         onmousedown={(event) => event.preventDefault()}
-        onclick={showPermissions}
+        onclick={showShield}
       >
-        {"\u{f033e}"}
+        {shield.mode === "off" ? "\u{f099e}" : "\u{f0498}"}{#if shield.blocked > 0}<span class="count">
+            {shield.blocked}
+          </span>{/if}
       </button>
-      {#if favicon !== ""}
-        {#key favicon}
-          <img
-            src={favicon}
-            alt=""
-            onerror={(event) => event.currentTarget instanceof HTMLElement && (event.currentTarget.hidden = true)}
-          />
-        {/key}
-      {/if}
+    {/if}
+    {#if favicon !== ""}
+      {#key favicon}
+        <img
+          src={favicon}
+          alt=""
+          onerror={(event) => event.currentTarget instanceof HTMLElement && (event.currentTarget.hidden = true)}
+        />
+      {/key}
+    {/if}
+    {#if editingAddress || site === undefined}
       <input
         bind:this={address}
         bind:value={typed}
         onkeydown={addressKey}
+        onblur={() => {
+          editingAddress = false;
+          typed = url;
+        }}
         spellcheck="false"
         placeholder="Search or type a URL"
       />
-      {#if Math.abs(zoom - 1) > 0.001}
-        <button type="button" title="Reset the zoom" onmousedown={(event) => event.preventDefault()} onclick={unzoom}>
-          {Math.round(zoom * 100)}%
-        </button>
-      {/if}
-      {#if loading}<div class="progress" style:width="{loaded * 100}%"></div>{/if}
-    </form>
+    {:else}
+      <button type="button" class="site" title={url} onclick={editAddress}>
+        <span class="host">{site.host}</span><span class="rest">{site.rest}</span>
+      </button>
+    {/if}
+    {#if Math.abs(zoom - 1) > 0.001}
+      <button type="button" title="Reset the zoom" onmousedown={(event) => event.preventDefault()} onclick={unzoom}>
+        {Math.round(zoom * 100)}%
+      </button>
+    {/if}
+    {#if loading}<div class="progress" style:width="{loaded * 100}%"></div>{/if}
+  </form>
+{/snippet}
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="browser" onfocusin={onfocus} onkeydown={keydown}>
+  {#if chrome && pageBar === undefined}
+    {@render controls()}
   {/if}
   {#if showsBar}
     <AppMenuBar bind:this={bar} entries={menu} {onmenu} onchoose={chooseMenu} onclose={() => (barShown = false)} />
@@ -718,11 +794,46 @@
       monospace;
   }
 
+  form.in-bar {
+    width: min(80ch, 50vw);
+    height: calc(var(--bar-height, 32px) - 6px);
+    padding: 0;
+  }
+
   button:hover {
     background: #313244;
   }
 
-  input {
+  button.insecure,
+  button.off {
+    color: #f38ba8;
+  }
+
+  .count {
+    margin-left: 3px;
+    font-size: 11px;
+  }
+
+  .site {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: #313244;
+  }
+
+  .host {
+    color: #cdd6f4;
+  }
+
+  .rest {
+    color: #6c7086;
+  }
+
+  input,
+  .site {
     flex: 1;
     padding: 3px 8px;
     border: 0;
