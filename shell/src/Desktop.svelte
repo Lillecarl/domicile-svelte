@@ -123,7 +123,7 @@
   };
 
   // Each chord, what it does in words and what it runs. The explorer
-  // (Meta+Shift+?) lists them by group.
+  // (Meta+Shift+space) lists them by group.
   const keys: Binding[] = [
     { chord: "Meta+Return", group: "Apps", label: "Terminal", run: launch(["kitty"]) },
     { chord: "Meta+b", group: "Apps", label: "New browser window", run: () => domicile.browser.open("about:blank") },
@@ -239,7 +239,7 @@
       },
     ]),
     { chord: "Meta+space", group: "Desktop", label: "Next keyboard layout", run: () => keymap?.next() },
-    { chord: "Meta+Shift+question", group: "Desktop", label: "These keybindings", run: () => toggleExplorer() },
+    { chord: "Meta+Shift+space", group: "Desktop", label: "These keybindings", run: () => toggleExplorer() },
     // swaylock's key under niri.
     { chord: "Ctrl+Alt+Delete", group: "Desktop", label: "Lock", run: () => domicile.session.lock() },
     {
@@ -282,7 +282,7 @@
     }
   };
   const pressed = (chord: string) => {
-    if (isExplorerOpen && chord !== "Meta+Shift+question") {
+    if (isExplorerOpen && chord !== "Meta+Shift+space") {
       explorer?.heard(chord);
     } else {
       bindings[chord]?.();
